@@ -15,7 +15,6 @@ type PriceMap = Record<string, number>;
 /* ===== Storage keys ===== */
 const LS_ORDERS = "simple_orders_v1";
 const LS_PRICES = "simple_prices_v1";
-const LS_TARGETS = "simple_targets_v1";
 
 /* ===== Utils ===== */
 const money = new Intl.NumberFormat("en-US", {
@@ -28,7 +27,7 @@ const dateStr = (ms: number) => new Date(ms).toLocaleString();
 const cn = (...a: (string | false | null | undefined)[]) =>
   a.filter(Boolean).join(" ");
 
-/** Chip simple para “BUY/SELL” y resúmenes */
+/** Chip simple para “BUY/SELL” */
 function Pill({
   children,
   tone = "neutral",
@@ -47,10 +46,8 @@ function Pill({
 }
 
 /* ===== Config ===== */
-// Auto-refresh (pensado para evitar rate limits)
-const REFRESH_MS_DEFAULT = 60000; // 60s
-// Fee spot Binance (VIP 0) sin BNB
-const FEE_RATE_SPOT = 0.001; // 0.10%
+const REFRESH_MS_DEFAULT = 60000; // 60s auto-refresh
+const FEE_RATE_SPOT = 0.001; // 0.10% Binance
 
 /* ===== Binance symbols ===== */
 const BINANCE_SYMBOLS: Record<string, string> = {
@@ -71,34 +68,17 @@ function toBinancePairs(symbols: string[]) {
   return Array.from(new Set(out));
 }
 
-/** Δ bruto vs actual según tipo */
+/** Δ bruto vs actual según tipo (positivo = a favor) */
 function diffVsActual(o: Order, current: number) {
   const side = o.side ?? "SELL";
   return side === "SELL"
-    ? (o.price - current) * o.qty // SELL: precio sube => pérdida
-    : (current - o.price) * o.qty; // BUY: precio sube => ganancia
+    ? (o.price - current) * o.qty // SELL: si el precio baja vs tu venta, ganás
+    : (current - o.price) * o.qty; // BUY: si el precio sube vs tu compra, ganás
 }
 
-/** Δ neto si cierro ahora (incluye fees en ambas patas) */
-function deltaCloseNow(o: Order, current: number, feeRate = FEE_RATE_SPOT) {
-  const side = o.side ?? "SELL";
-  const totalUsd = o.qty * o.price;
-
-  if (side === "SELL") {
-    // SELL -> recomprar ahora
-    const usdtAfterSell = totalUsd * (1 - feeRate);
-    if (current <= 0) return 0;
-    const baseRebuyGross = usdtAfterSell / current;
-    const feeBuyBase = baseRebuyGross * feeRate; // fee cobrada en base
-    const baseRebuyNet = baseRebuyGross - feeBuyBase;
-    const deltaBase = baseRebuyNet - o.qty;
-    return deltaBase * current; // USD
-  } else {
-    // BUY -> vender ahora
-    const proceedsAfterSell = o.qty * current * (1 - feeRate);
-    const costWithFee = totalUsd * (1 + feeRate); // aprox: fee compra en USD
-    return proceedsAfterSell - costWithFee; // USD
-  }
+/** Fee en USDT del cierre (tu definición mobile): 0.10% sobre valor actual en USDT */
+function feeCloseUsdSimple(o: Order, current: number) {
+  return current > 0 ? o.qty * current * FEE_RATE_SPOT : 0;
 }
 
 export default function App() {
@@ -110,18 +90,9 @@ export default function App() {
       return [];
     }
   });
-
   const [prices, setPrices] = useState<PriceMap>(() => {
     try {
       return JSON.parse(localStorage.getItem(LS_PRICES) || "{}") || {};
-    } catch {
-      return {};
-    }
-  });
-
-  const [targets] = useState<Record<string, number>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(LS_TARGETS) || "{}") || {};
     } catch {
       return {};
     }
@@ -134,7 +105,6 @@ export default function App() {
     side: "SELL" as "BUY" | "SELL",
   });
 
-  // Carga y última actualización
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
@@ -154,9 +124,7 @@ export default function App() {
     );
   };
 
-  // Para detectar cruces (ganancia/pérdida) y objetivos
   const prevSignRef = useRef<Record<string, number>>({});
-  const prevTargetHitRef = useRef<Record<string, boolean>>({});
 
   /* ===== Persistencia ===== */
   useEffect(() => {
@@ -179,7 +147,6 @@ export default function App() {
     };
     setOrders((prev) => [o, ...prev]);
   };
-
   const removeOrder = (id: string) =>
     setOrders((prev) => prev.filter((o) => o.id !== id));
 
@@ -187,14 +154,11 @@ export default function App() {
   const fetchPricesBatch = async (symbols: string[]) => {
     const pairs = toBinancePairs(symbols);
     if (!pairs.length) return;
-
     setLoading(true);
-
     const pairToSym: Record<string, string> = {};
     Object.entries(BINANCE_SYMBOLS).forEach(([sym, pair]) => {
       pairToSym[pair] = sym;
     });
-
     const updates: PriceMap = {};
     for (const pair of pairs) {
       try {
@@ -211,7 +175,6 @@ export default function App() {
         pushToast(`No pude traer ${pair}`, "error");
       }
     }
-
     if (Object.keys(updates).length) {
       setPrices((prev) => ({ ...prev, ...updates }));
       setLastUpdated(Date.now());
@@ -219,7 +182,6 @@ export default function App() {
     setLoading(false);
   };
 
-  // Qué símbolos trackear
   const trackedSymbols = useMemo(() => {
     const set = new Set<string>();
     if (form.asset) set.add(form.asset.toUpperCase());
@@ -227,7 +189,7 @@ export default function App() {
     return Array.from(set).filter((a) => BINANCE_SYMBOLS[a]);
   }, [orders, form.asset]);
 
-  /* ===== Auto-refresh + visibility ===== */
+  /* ===== Auto-refresh ===== */
   useEffect(() => {
     let interval: any = null;
     const computeTracked = () =>
@@ -238,7 +200,6 @@ export default function App() {
           ...orders.map((o) => o.asset),
         ])
       );
-
     const start = () => {
       fetchPricesBatch(computeTracked());
       interval = setInterval(
@@ -250,16 +211,13 @@ export default function App() {
       if (interval) clearInterval(interval);
       interval = null;
     };
+    if (document.visibilityState === "visible") start();
     const onVis = () => {
       if (document.visibilityState === "visible") {
         stop();
         start();
-      } else {
-        stop();
-      }
+      } else stop();
     };
-
-    if (document.visibilityState === "visible") start();
     document.addEventListener("visibilitychange", onVis);
     return () => {
       stop();
@@ -267,7 +225,7 @@ export default function App() {
     };
   }, [prices, orders, form.asset]);
 
-  /* ===== Toasts por cruce ganancia/pérdida según BUY/SELL ===== */
+  /* ===== Toasts por cruces (usando Δ bruto) ===== */
   useEffect(() => {
     orders.forEach((o) => {
       const current = prices[o.asset] || 0;
@@ -294,78 +252,63 @@ export default function App() {
     });
   }, [prices, orders]);
 
-  /* ===== Toasts por objetivo ===== */
-  useEffect(() => {
-    Object.keys(targets).forEach((sym) => {
-      const tgt = targets[sym];
-      if (!tgt) return;
-      const curr = prices[sym] || 0;
-      const hit = curr >= tgt;
-      const prev = prevTargetHitRef.current[sym];
-      if (prev === undefined) {
-        prevTargetHitRef.current[sym] = hit;
-      } else if (!prev && hit) {
-        pushToast(
-          `🎯 ${sym} alcanzó el objetivo: ${money.format(curr)}`,
-          "info"
-        );
-        prevTargetHitRef.current[sym] = hit;
+  /* ===== Neto total (cerrar ahora) ===== */
+  const totalNetNow = useMemo(() => {
+    return orders.reduce((sum, o) => {
+      const current = prices[o.asset] || 0;
+      const side = o.side ?? "SELL";
+      const isSell = side === "SELL";
+      const totalUsd = o.qty * o.price;
+
+      let deltaUsdCloseNow = 0;
+      if (isSell) {
+        // SELL: recomprar ahora (fee en base)
+        if (current > 0) {
+          const baseRebuyGross = totalUsd / current;
+          const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT; // fee en base
+          const baseRebuyNet = baseRebuyGross - feeBuyBase;
+          const deltaBase = baseRebuyNet - o.qty;
+          deltaUsdCloseNow = deltaBase * current;
+        }
       } else {
-        prevTargetHitRef.current[sym] = hit;
+        // BUY: vender ahora (fee de venta)
+        const proceedsAfterSell = o.qty * current * (1 - FEE_RATE_SPOT);
+        const cost = totalUsd; // fee de compra histórico ya pagado
+        deltaUsdCloseNow = proceedsAfterSell - cost;
       }
-    });
-  }, [prices, targets]);
 
-  /* ===== Neto total (cerrar ahora) + título con pulso verde/rojo ===== */
-  const totalNetNow = useMemo(
-    () =>
-      orders.reduce((sum, o) => {
-        const curr = prices[o.asset] || 0;
-        return sum + deltaCloseNow(o, curr, FEE_RATE_SPOT);
-      }, 0),
-    [orders, prices]
-  );
+      return sum + deltaUsdCloseNow;
+    }, 0);
+  }, [orders, prices]);
 
-  const titlePulseIdRef = useRef<any>(null);
+  // === Neto "simple" para MOBILE: sum(Bruto − Fee(USDT))
+  const totalNetNowSimple = useMemo(() => {
+    return orders.reduce((sum, o) => {
+      const current = prices[o.asset] || 0;
+      const bruto = diffVsActual(o, current);
+      const feeUsd = feeCloseUsdSimple(o, current);
+      return sum + (bruto - feeUsd);
+    }, 0);
+  }, [orders, prices]);
 
+  // Mostrar total neto (modelo completo) en el título desktop
   useEffect(() => {
-    const sign = totalNetNow > 0 ? 1 : totalNetNow < 0 ? -1 : 0;
-    const base = `Neto: ${money.format(totalNetNow)}`;
-
-    const start = (emoji: string) => {
-      if (titlePulseIdRef.current) return;
-      let on = false;
-      titlePulseIdRef.current = setInterval(() => {
-        on = !on;
-        document.title = (on ? `${emoji} ` : " ") + base;
-      }, 800);
-    };
-    const stop = () => {
-      if (titlePulseIdRef.current) {
-        clearInterval(titlePulseIdRef.current);
-        titlePulseIdRef.current = null;
-      }
-      document.title = base;
-    };
-
-    if (sign === 1) {
-      stop();
-      start("🟢");
-    } else if (sign === -1) {
-      stop();
-      start("🔴");
-    } else {
-      stop();
-    }
-
-    return () => stop();
+    const positive = totalNetNow >= 0;
+    const light = positive ? "🟢" : "🔴";
+    document.title = `${light} Neto: ${money.format(totalNetNow)}`;
   }, [totalNetNow]);
 
   /* ===== Render ===== */
+  const first = orders[0];
+  const firstCurrent = first ? prices[first.asset] || 0 : 0;
+  const firstBruto = first ? diffVsActual(first, firstCurrent) : 0;
+  const firstFeeUsd = first ? feeCloseUsdSimple(first, firstCurrent) : 0;
+  const firstNetoSimple = first ? firstBruto - firstFeeUsd : 0;
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8">
       <div className="w-full mx-auto grid gap-6">
-        {/* Toasts */}
+        {/* ===== Toasts ===== */}
         <div className="fixed top-4 right-4 space-y-2 z-50">
           {toasts.map((t) => (
             <div
@@ -384,8 +327,101 @@ export default function App() {
           ))}
         </div>
 
-        {/* Top bar */}
-        <section className="sticky top-0 z-40 p-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/50">
+        {/* ===== RESUMEN MOBILE (Orden 1 + Neto simple) ===== */}
+        <section className="md:hidden order-0 p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-neutral-400">Resumen (mobile)</div>
+            {lastUpdated && (
+              <span className="text-xs text-neutral-400">
+                Última: {new Date(lastUpdated).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+
+          {/* Δ Neto simple global */}
+          <div className="mt-2 text-neutral-300 text-sm">
+            Δ Neto (simple):{" "}
+            <span
+              className={cn(
+                "font-semibold tabular-nums",
+                totalNetNowSimple >= 0 ? "text-emerald-400" : "text-rose-400"
+              )}
+            >
+              {money.format(totalNetNowSimple)}
+            </span>
+            <span className="text-neutral-500"> (Bruto − fee 0.10% USDT)</span>
+          </div>
+
+          {/* Orden 1 */}
+          {first ? (
+            <div className="mt-3 grid gap-2 rounded-xl border border-neutral-800 p-3 bg-neutral-900/40">
+              <div className="flex items-center gap-2">
+                <Pill
+                  tone={(first.side ?? "SELL") === "SELL" ? "red" : "green"}
+                >
+                  {first.side ?? "SELL"}
+                </Pill>
+                <span className="font-semibold">{first.asset}</span>
+                <span className="text-xs text-neutral-400">
+                  {dateStr(first.ts)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Qty</span>
+                  <span className="tabular-nums">{first.qty}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Entrada</span>
+                  <span className="tabular-nums">
+                    {money.format(first.price)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Precio act.</span>
+                  <span className="tabular-nums">
+                    {firstCurrent ? money.format(firstCurrent) : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Bruto</span>
+                  <span
+                    className={cn(
+                      "tabular-nums font-semibold",
+                      firstBruto >= 0 ? "text-emerald-400" : "text-rose-400"
+                    )}
+                  >
+                    {money.format(firstBruto)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Fee (USDT 0.10%)</span>
+                  <span className="tabular-nums">
+                    {money.format(firstFeeUsd)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Neto</span>
+                  <span
+                    className={cn(
+                      "tabular-nums font-semibold",
+                      firstNetoSimple >= 0
+                        ? "text-emerald-400"
+                        : "text-rose-400"
+                    )}
+                  >
+                    {money.format(firstNetoSimple)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 text-sm text-neutral-500">Sin órdenes aún</div>
+          )}
+        </section>
+
+        {/* ===== Top bar (desktop) ===== */}
+        <section className="sticky top-0 z-40 p-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/50 order-2 md:order-none">
           <div className="flex flex-wrap items-center gap-3">
             <select
               value={form.asset}
@@ -428,8 +464,8 @@ export default function App() {
           </div>
         </section>
 
-        {/* Agregar orden */}
-        <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/30 grid gap-4">
+        {/* ===== Agregar orden ===== */}
+        <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/30 grid gap-4 order-3 md:order-none">
           <div className="text-lg font-semibold">Agregar orden</div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             {/* Tipo */}
@@ -505,21 +541,6 @@ export default function App() {
                 }
                 className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 w-full"
               />
-              <div className="text-[11px] text-neutral-500 mt-1">
-                Sugerido:{" "}
-                <button
-                  className="underline hover:no-underline"
-                  onClick={() =>
-                    prices[form.asset] &&
-                    setForm((f) => ({
-                      ...f,
-                      price: Number(prices[form.asset].toFixed(2)),
-                    }))
-                  }
-                >
-                  usar precio actual
-                </button>
-              </div>
             </div>
 
             {/* Acción */}
@@ -534,8 +555,8 @@ export default function App() {
           </div>
         </section>
 
-        {/* Tabla de órdenes */}
-        <section className="rounded-2xl overflow-auto border border-neutral-800 max-h-[65vh]">
+        {/* ===== Tabla de órdenes (arriba en mobile) ===== */}
+        <section className="rounded-2xl overflow-auto border border-neutral-800 order-1 md:order-none">
           <table className="w-full text-sm">
             <thead className="bg-neutral-900/70 sticky top-0 backdrop-blur">
               <tr>
@@ -549,6 +570,12 @@ export default function App() {
                 <th className="px-3 py-2 text-right">Δ vs actual</th>
                 <th className="px-3 py-2 text-right">Δ neto (cerrar ahora)</th>
                 <th className="px-3 py-2 text-right">Break-even USD</th>
+                <th className="px-3 py-2 text-right">
+                  USDT sobrantes (cerrar ahora)
+                </th>
+                <th className="px-3 py-2 text-right">
+                  ETH objetivo (recomprando TODO ahora)
+                </th>
                 <th></th>
               </tr>
             </thead>
@@ -556,7 +583,7 @@ export default function App() {
               {orders.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={13}
                     className="text-center text-neutral-500 py-6"
                   >
                     Sin órdenes aún
@@ -568,24 +595,66 @@ export default function App() {
                   const side = o.side ?? "SELL";
                   const isSell = side === "SELL";
 
-                  // Total y fee de la operación registrada
                   const totalUsd = o.qty * o.price;
-                  const feeOpUsd = totalUsd * FEE_RATE_SPOT;
 
                   // Δ bruto vs precio actual
                   const diff = diffVsActual(o, current);
 
-                  // Δ neto al cerrar ahora (incluye fees)
-                  const deltaUsdCloseNow = deltaCloseNow(
-                    o,
-                    current,
-                    FEE_RATE_SPOT
-                  );
+                  // Fee de la operación de CIERRE (modelo “tabla original”)
+                  let feeCloseUsd = 0;
+                  if (isSell) {
+                    if (current > 0) {
+                      const baseRebuyGross = totalUsd / current;
+                      const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT; // en base
+                      feeCloseUsd = feeBuyBase * current; // mostrado en USD
+                    }
+                  } else {
+                    feeCloseUsd = o.qty * current * FEE_RATE_SPOT; // fee de venta
+                  }
 
-                  // Break-even (precio que haría neto = 0)
+                  // Δ neto al cerrar ahora (modelo “tabla original”)
+                  let deltaUsdCloseNow = 0;
+                  if (isSell) {
+                    if (current > 0) {
+                      const baseRebuyGross = totalUsd / current;
+                      const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT;
+                      const baseRebuyNet = baseRebuyGross - feeBuyBase;
+                      const deltaBase = baseRebuyNet - o.qty;
+                      deltaUsdCloseNow = deltaBase * current;
+                    }
+                  } else {
+                    const proceedsAfterSell =
+                      o.qty * current * (1 - FEE_RATE_SPOT);
+                    const cost = totalUsd;
+                    deltaUsdCloseNow = proceedsAfterSell - cost;
+                  }
+
+                  // Break-even con solo fee de cierre
                   const breakEven = isSell
-                    ? o.price * Math.pow(1 - FEE_RATE_SPOT, 2)
-                    : o.price * ((1 + FEE_RATE_SPOT) / (1 - FEE_RATE_SPOT));
+                    ? o.price * (1 - FEE_RATE_SPOT)
+                    : o.price / (1 - FEE_RATE_SPOT);
+
+                  // USDT sobrantes (cerrar ahora)
+                  let usdtLeftoverCloseNow = 0;
+                  if (!isSell) {
+                    const proceedsAfterSell =
+                      o.qty * current * (1 - FEE_RATE_SPOT);
+                    const cost = totalUsd;
+                    usdtLeftoverCloseNow = proceedsAfterSell - cost;
+                  } else {
+                    usdtLeftoverCloseNow = 0;
+                  }
+
+                  // ETH objetivo (recomprando TODO ahora)
+                  let ethTargetRebuyAll: number | null = null;
+                  let ethTargetDelta: number | null = null;
+                  if (isSell && current > 0) {
+                    const baseRebuyGross = totalUsd / current;
+                    const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT;
+                    const baseRebuyNet = baseRebuyGross - feeBuyBase; // ETH objetivo
+                    ethTargetRebuyAll = baseRebuyNet;
+                    ethTargetDelta = baseRebuyNet - o.qty;
+                  }
 
                   return (
                     <tr key={o.id} className="border-t border-neutral-900/60">
@@ -606,7 +675,7 @@ export default function App() {
                         {money.format(totalUsd)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {money.format(feeOpUsd)}
+                        {money.format(feeCloseUsd)}
                       </td>
                       <td
                         className={cn(
@@ -628,6 +697,36 @@ export default function App() {
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {money.format(breakEven)}
+                      </td>
+                      <td
+                        className={cn(
+                          "px-3 py-2 text-right tabular-nums",
+                          usdtLeftoverCloseNow >= 0
+                            ? "text-emerald-300"
+                            : "text-rose-300"
+                        )}
+                      >
+                        {money.format(usdtLeftoverCloseNow)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {ethTargetRebuyAll == null ? (
+                          <span className="text-neutral-500">—</span>
+                        ) : (
+                          <div className="inline-flex flex-col items-end leading-tight">
+                            <span>{ethTargetRebuyAll.toFixed(6)} ETH</span>
+                            <span
+                              className={cn(
+                                "text-xs font-semibold",
+                                (ethTargetDelta ?? 0) >= 0
+                                  ? "text-emerald-400"
+                                  : "text-rose-400"
+                              )}
+                            >
+                              {(ethTargetDelta ?? 0) >= 0 ? "+" : ""}
+                              {ethTargetDelta?.toFixed(6)} ETH
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button
