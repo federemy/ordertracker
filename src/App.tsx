@@ -97,7 +97,7 @@ export default function App() {
     }
   });
 
-  const [targets, setTargets] = useState<Record<string, number>>(() => {
+  const [targets] = useState<Record<string, number>>(() => {
     try {
       return JSON.parse(localStorage.getItem(LS_TARGETS) || "{}") || {};
     } catch {
@@ -143,9 +143,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(LS_PRICES, JSON.stringify(prices));
   }, [prices]);
-  useEffect(() => {
-    localStorage.setItem(LS_TARGETS, JSON.stringify(targets));
-  }, [targets]);
 
   /* ===== Helpers ===== */
   const addOrder = () => {
