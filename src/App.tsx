@@ -79,6 +79,28 @@ function diffVsActual(o: Order, current: number) {
     : (current - o.price) * o.qty; // BUY: precio sube => ganancia
 }
 
+/** Δ neto si cierro ahora (incluye fees en ambas patas) */
+function deltaCloseNow(o: Order, current: number, feeRate = FEE_RATE_SPOT) {
+  const side = o.side ?? "SELL";
+  const totalUsd = o.qty * o.price;
+
+  if (side === "SELL") {
+    // SELL -> recomprar ahora
+    const usdtAfterSell = totalUsd * (1 - feeRate);
+    if (current <= 0) return 0;
+    const baseRebuyGross = usdtAfterSell / current;
+    const feeBuyBase = baseRebuyGross * feeRate; // fee cobrada en base
+    const baseRebuyNet = baseRebuyGross - feeBuyBase;
+    const deltaBase = baseRebuyNet - o.qty;
+    return deltaBase * current; // USD
+  } else {
+    // BUY -> vender ahora
+    const proceedsAfterSell = o.qty * current * (1 - feeRate);
+    const costWithFee = totalUsd * (1 + feeRate); // aprox: fee compra en USD
+    return proceedsAfterSell - costWithFee; // USD
+  }
+}
+
 export default function App() {
   /* ===== State ===== */
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -294,20 +316,29 @@ export default function App() {
     });
   }, [prices, targets]);
 
-  /* ===== Title pulse cuando haya ganancia en alguna ===== */
+  /* ===== Neto total (cerrar ahora) + título con pulso verde/rojo ===== */
+  const totalNetNow = useMemo(
+    () =>
+      orders.reduce((sum, o) => {
+        const curr = prices[o.asset] || 0;
+        return sum + deltaCloseNow(o, curr, FEE_RATE_SPOT);
+      }, 0),
+    [orders, prices]
+  );
+
   const titlePulseIdRef = useRef<any>(null);
   const originalTitleRef = useRef<string>(document.title);
+
   useEffect(() => {
-    const anyGain = orders.some((o) => {
-      const current = prices[o.asset] || 0;
-      return diffVsActual(o, current) > 0;
-    });
-    const start = () => {
+    const sign = totalNetNow > 0 ? 1 : totalNetNow < 0 ? -1 : 0;
+    const base = `Neto: ${money.format(totalNetNow)}`;
+
+    const start = (emoji: string) => {
       if (titlePulseIdRef.current) return;
       let on = false;
       titlePulseIdRef.current = setInterval(() => {
         on = !on;
-        document.title = (on ? "🟢 " : " ") + originalTitleRef.current;
+        document.title = (on ? `${emoji} ` : " ") + base;
       }, 800);
     };
     const stop = () => {
@@ -315,12 +346,21 @@ export default function App() {
         clearInterval(titlePulseIdRef.current);
         titlePulseIdRef.current = null;
       }
-      document.title = originalTitleRef.current;
+      document.title = base;
     };
-    if (anyGain) start();
-    else stop();
+
+    if (sign === 1) {
+      stop();
+      start("🟢");
+    } else if (sign === -1) {
+      stop();
+      start("🔴");
+    } else {
+      stop(); // 0: fijo
+    }
+
     return () => stop();
-  }, [prices, orders]);
+  }, [totalNetNow]);
 
   /* ===== Render ===== */
   return (
@@ -537,24 +577,11 @@ export default function App() {
                   const diff = diffVsActual(o, current);
 
                   // Δ neto al cerrar ahora (incluye fees)
-                  let deltaUsdCloseNow = 0;
-                  if (isSell) {
-                    // SELL: recomprar ahora
-                    const usdtAfterSell = totalUsd * (1 - FEE_RATE_SPOT);
-                    if (current > 0) {
-                      const baseRebuyGross = usdtAfterSell / current;
-                      const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT;
-                      const baseRebuyNet = baseRebuyGross - feeBuyBase;
-                      const deltaBase = baseRebuyNet - o.qty;
-                      deltaUsdCloseNow = deltaBase * current;
-                    }
-                  } else {
-                    // BUY: vender ahora
-                    const proceedsAfterSell =
-                      o.qty * current * (1 - FEE_RATE_SPOT);
-                    const costWithFee = totalUsd * (1 + FEE_RATE_SPOT); // fee compra aprox.
-                    deltaUsdCloseNow = proceedsAfterSell - costWithFee;
-                  }
+                  const deltaUsdCloseNow = deltaCloseNow(
+                    o,
+                    current,
+                    FEE_RATE_SPOT
+                  );
 
                   // Break-even (precio que haría neto = 0)
                   const breakEven = isSell
@@ -617,57 +644,6 @@ export default function App() {
               )}
             </tbody>
           </table>
-        </section>
-
-        {/* Test rápido */}
-        <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/20 grid gap-3">
-          <div className="text-sm font-semibold">Test rápido de toasts</div>
-          <div className="text-xs text-neutral-400">
-            Usa estos botones para simular ganancia/pérdida sobre el activo
-            seleccionado sin esperar al mercado.
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => {
-                const last = orders.find(
-                  (o) => o.asset.toUpperCase() === form.asset.toUpperCase()
-                );
-                const base = last ? last.price : prices[form.asset] || 0;
-                const target =
-                  base > 0 ? base * 0.98 : (prices[form.asset] || 0) * 0.9; // 2% por debajo
-                setPrices((p) => ({
-                  ...p,
-                  [form.asset]: Number(target.toFixed(2)),
-                }));
-              }}
-              className="px-3 py-2 rounded-xl bg-emerald-600/80 hover:bg-emerald-500 text-sm"
-            >
-              Forzar ganancia ({form.asset})
-            </button>
-            <button
-              onClick={() => {
-                const last = orders.find(
-                  (o) => o.asset.toUpperCase() === form.asset.toUpperCase()
-                );
-                const base = last ? last.price : prices[form.asset] || 0;
-                const target =
-                  base > 0 ? base * 1.02 : (prices[form.asset] || 0) * 1.1; // 2% por encima
-                setPrices((p) => ({
-                  ...p,
-                  [form.asset]: Number(target.toFixed(2)),
-                }));
-              }}
-              className="px-3 py-2 rounded-xl bg-rose-600/80 hover:bg-rose-500 text-sm"
-            >
-              Forzar pérdida ({form.asset})
-            </button>
-            <button
-              onClick={() => fetchPricesBatch(trackedSymbols)}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
-            >
-              Actualizar ahora
-            </button>
-          </div>
         </section>
       </div>
     </div>
