@@ -325,7 +325,7 @@ export default function App() {
   /* ===== Render ===== */
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8">
-      <div className="max-w-4xl w-full mx-auto grid gap-6">
+      <div className="w-full mx-auto grid gap-6">
         {/* Toasts */}
         <div className="fixed top-4 right-4 space-y-2 z-50">
           {toasts.map((t) => (
