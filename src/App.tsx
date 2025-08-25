@@ -327,7 +327,6 @@ export default function App() {
   );
 
   const titlePulseIdRef = useRef<any>(null);
-  const originalTitleRef = useRef<string>(document.title);
 
   useEffect(() => {
     const sign = totalNetNow > 0 ? 1 : totalNetNow < 0 ? -1 : 0;
@@ -356,7 +355,7 @@ export default function App() {
       stop();
       start("🔴");
     } else {
-      stop(); // 0: fijo
+      stop();
     }
 
     return () => stop();
