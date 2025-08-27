@@ -81,6 +81,18 @@ function feeCloseUsdSimple(o: Order, current: number) {
   return current > 0 ? o.qty * current * FEE_RATE_SPOT : 0;
 }
 
+/** NUEVO: Δ % vs precio de entrada, signo favorable según lado */
+function pctDiffVsEntry(o: Order, current: number) {
+  if (!o.price || !Number.isFinite(current) || current <= 0) return null;
+  const side = o.side ?? "SELL";
+  // BUY: (current - entry) / entry ; SELL: (entry - current) / entry
+  const pct =
+    side === "SELL"
+      ? (o.price - current) / o.price
+      : (current - o.price) / o.price;
+  return pct * 100;
+}
+
 export default function App() {
   /* ===== State ===== */
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -384,6 +396,28 @@ export default function App() {
                   </span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-neutral-400">Δ % vs entrada</span>
+                  <span
+                    className={cn(
+                      "tabular-nums font-semibold",
+                      (() => {
+                        const pct = pctDiffVsEntry(first, firstCurrent);
+                        return (pct ?? 0) >= 0
+                          ? "text-emerald-400"
+                          : "text-rose-400";
+                      })()
+                    )}
+                  >
+                    {(() => {
+                      const pct = pctDiffVsEntry(first, firstCurrent);
+                      return pct == null
+                        ? "—"
+                        : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+                    })()}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
                   <span className="text-neutral-400">Bruto</span>
                   <span
                     className={cn(
@@ -392,12 +426,6 @@ export default function App() {
                     )}
                   >
                     {money.format(firstBruto)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-neutral-400">Fee (USDT 0.10%)</span>
-                  <span className="tabular-nums">
-                    {money.format(firstFeeUsd)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -568,6 +596,8 @@ export default function App() {
                 <th className="px-3 py-2 text-right">Total</th>
                 <th className="px-3 py-2 text-right">Fee operación (0.10%)</th>
                 <th className="px-3 py-2 text-right">Δ vs actual</th>
+                {/* NUEVO */}
+                <th className="px-3 py-2 text-right">Δ % vs entrada</th>
                 <th className="px-3 py-2 text-right">Δ neto (cerrar ahora)</th>
                 <th className="px-3 py-2 text-right">Break-even USD</th>
                 <th className="px-3 py-2 text-right">
@@ -582,8 +612,9 @@ export default function App() {
             <tbody className="[&_tr:nth-child(even)]:bg-neutral-900/20">
               {orders.length === 0 ? (
                 <tr>
+                  {/* colSpan actualizado por nueva columna */}
                   <td
-                    colSpan={13}
+                    colSpan={14}
                     className="text-center text-neutral-500 py-6"
                   >
                     Sin órdenes aún
@@ -599,6 +630,13 @@ export default function App() {
 
                   // Δ bruto vs precio actual
                   const diff = diffVsActual(o, current);
+
+                  // NUEVO: Δ % vs entrada
+                  const pct = pctDiffVsEntry(o, current);
+                  const pctStr =
+                    pct == null
+                      ? "—"
+                      : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 
                   // Fee de la operación de CIERRE (modelo “tabla original”)
                   let feeCloseUsd = 0;
@@ -685,6 +723,17 @@ export default function App() {
                       >
                         {money.format(diff)}
                       </td>
+
+                      {/* NUEVO: Δ % vs entrada */}
+                      <td
+                        className={cn(
+                          "px-3 py-2 text-right font-semibold tabular-nums",
+                          (pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                        )}
+                      >
+                        {pctStr}
+                      </td>
+
                       <td
                         className={cn(
                           "px-3 py-2 text-right font-semibold tabular-nums",
