@@ -201,9 +201,10 @@ export default function App() {
     return Array.from(set).filter((a) => BINANCE_SYMBOLS[a]);
   }, [orders, form.asset]);
 
-  /* ===== Auto-refresh ===== */
+  /* ===== Auto-refresh (siempre activo) ===== */
   useEffect(() => {
     let interval: any = null;
+
     const computeTracked = () =>
       Array.from(
         new Set([
@@ -212,29 +213,25 @@ export default function App() {
           ...orders.map((o) => o.asset),
         ])
       );
-    const start = () => {
-      fetchPricesBatch(computeTracked());
-      interval = setInterval(
-        () => fetchPricesBatch(computeTracked()),
-        REFRESH_MS_DEFAULT
-      );
-    };
-    const stop = () => {
-      if (interval) clearInterval(interval);
-      interval = null;
-    };
-    if (document.visibilityState === "visible") start();
+
+    const tick = () => fetchPricesBatch(computeTracked());
+
+    // primer fetch inmediato
+    tick();
+    // seguir refrescando incluso en background (el navegador puede trottle, pero no se pausa)
+    interval = setInterval(tick, REFRESH_MS_DEFAULT);
+
+    // si volvés a la tab, hacé un fetch inmediato para “catch up”
     const onVis = () => {
-      if (document.visibilityState === "visible") {
-        stop();
-        start();
-      } else stop();
+      if (document.visibilityState === "visible") tick();
     };
     document.addEventListener("visibilitychange", onVis);
+
     return () => {
-      stop();
+      if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVis);
     };
+    // Dependencias: cuando cambian, recomputamos tracked y reiniciamos el intervalo
   }, [prices, orders, form.asset]);
 
   /* ===== Toasts por cruces (usando Δ bruto) ===== */
@@ -293,7 +290,7 @@ export default function App() {
     }, 0);
   }, [orders, prices]);
 
-  // % global: comparación entre valor actual y valor de entrada total
+  // % global: valor actual vs valor de entrada total
   const totalPctNow = useMemo(() => {
     let entryUsd = 0;
     let currentUsd = 0;
@@ -306,12 +303,11 @@ export default function App() {
       const totalUsd = o.qty * o.price;
 
       if (side === "BUY") {
-        entryUsd += totalUsd; // lo que pusiste al comprar
-        currentUsd += o.qty * current; // lo que vale ahora
+        entryUsd += totalUsd; // invertiste esto
+        currentUsd += o.qty * current; // vale esto ahora
       } else {
-        // SELL: invertimos lógica → si vendiste en X, comparás cuánto valdría recomprar ahora
-        entryUsd += totalUsd; // lo que recibiste
-        currentUsd += o.qty * current; // lo que te costaría recomprar
+        entryUsd += totalUsd; // vendiste y recibiste esto
+        currentUsd += o.qty * current; // te costaría recomprarlo ahora
       }
     });
 
@@ -334,9 +330,9 @@ export default function App() {
     const positive = totalNetNow >= 0;
     const light = positive ? "🟢" : "🔴";
     const pctStr =
-      totalPctNow == null
-        ? ""
-        : ` (${totalPctNow >= 0 ? "+" : ""}${totalPctNow.toFixed(2)}%)`;
+      typeof totalPctNow === "number"
+        ? ` (${totalPctNow >= 0 ? "+" : ""}${totalPctNow.toFixed(2)}%)`
+        : "";
     document.title = `${light} Neto: ${money.format(totalNetNow)}${pctStr}`;
   }, [totalNetNow, totalPctNow]);
 
