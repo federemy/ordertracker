@@ -293,6 +293,32 @@ export default function App() {
     }, 0);
   }, [orders, prices]);
 
+  // % global: comparación entre valor actual y valor de entrada total
+  const totalPctNow = useMemo(() => {
+    let entryUsd = 0;
+    let currentUsd = 0;
+
+    orders.forEach((o) => {
+      const current = prices[o.asset] || 0;
+      if (!o.price || !current) return;
+
+      const side = o.side ?? "SELL";
+      const totalUsd = o.qty * o.price;
+
+      if (side === "BUY") {
+        entryUsd += totalUsd; // lo que pusiste al comprar
+        currentUsd += o.qty * current; // lo que vale ahora
+      } else {
+        // SELL: invertimos lógica → si vendiste en X, comparás cuánto valdría recomprar ahora
+        entryUsd += totalUsd; // lo que recibiste
+        currentUsd += o.qty * current; // lo que te costaría recomprar
+      }
+    });
+
+    if (entryUsd <= 0) return null;
+    return ((currentUsd - entryUsd) / entryUsd) * 100;
+  }, [orders, prices]);
+
   // === Neto "simple" para MOBILE: sum(Bruto − Fee(USDT))
   const totalNetNowSimple = useMemo(() => {
     return orders.reduce((sum, o) => {
@@ -307,8 +333,12 @@ export default function App() {
   useEffect(() => {
     const positive = totalNetNow >= 0;
     const light = positive ? "🟢" : "🔴";
-    document.title = `${light} Neto: ${money.format(totalNetNow)}`;
-  }, [totalNetNow]);
+    const pctStr =
+      totalPctNow == null
+        ? ""
+        : ` (${totalPctNow >= 0 ? "+" : ""}${totalPctNow.toFixed(2)}%)`;
+    document.title = `${light} Neto: ${money.format(totalNetNow)}${pctStr}`;
+  }, [totalNetNow, totalPctNow]);
 
   /* ===== Render ===== */
   const first = orders[0];
@@ -396,7 +426,7 @@ export default function App() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-400">Δ % vs entrada</span>
+                  <span className="text-neutral-400">Δ %</span>
                   <span
                     className={cn(
                       "tabular-nums font-semibold",
