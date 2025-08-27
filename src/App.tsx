@@ -47,7 +47,7 @@ function Pill({
 
 /* ===== Config ===== */
 const REFRESH_MS_DEFAULT = 60000; // 60s auto-refresh
-const FEE_RATE_SPOT = 0.001; // 0.10% Binance
+const FEE_RATE_SPOT = 0.0015; // 0.10% Binance
 
 /* ===== Binance symbols ===== */
 const BINANCE_SYMBOLS: Record<string, string> = {
@@ -76,7 +76,7 @@ function diffVsActual(o: Order, current: number) {
     : (current - o.price) * o.qty; // BUY: si el precio sube vs tu compra, ganás
 }
 
-/** Fee en USDT del cierre (tu definición mobile): 0.10% sobre valor actual en USDT */
+/** Fee en USDT del cierre (tu definición mobile): 0.15% sobre valor actual en USDT */
 function feeCloseUsdSimple(o: Order, current: number) {
   return current > 0 ? o.qty * current * FEE_RATE_SPOT : 0;
 }
@@ -387,7 +387,7 @@ export default function App() {
             >
               {money.format(totalNetNowSimple)}
             </span>
-            <span className="text-neutral-500"> (Bruto − fee 0.10% USDT)</span>
+            <span className="text-neutral-500"> (Bruto − fee 0.15% USDT)</span>
           </div>
 
           {/* Orden 1 */}
@@ -620,7 +620,7 @@ export default function App() {
                 <th className="px-3 py-2 text-right">Cantidad</th>
                 <th className="px-3 py-2 text-right">Precio</th>
                 <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 text-right">Fee operación (0.10%)</th>
+                <th className="px-3 py-2 text-right">Fee operación (0.15%)</th>
                 <th className="px-3 py-2 text-right">Δ vs actual</th>
                 {/* NUEVO */}
                 <th className="px-3 py-2 text-right">Δ % vs entrada</th>
