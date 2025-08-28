@@ -325,6 +325,8 @@ export default function App() {
     }, 0);
   }, [orders, prices]);
 
+  void totalNetNowSimple; // ✅ cuenta como lectura, no afecta el bundle
+
   // Mostrar total neto (modelo completo) en el título desktop
   useEffect(() => {
     const positive = totalNetNow >= 0;
