@@ -371,7 +371,7 @@ export default function App() {
         <section className="md:hidden order-0 p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur">
           {/* Orden 1 */}
           {first ? (
-            <div className="mt-3 grid gap-2 rounded-xl border border-neutral-800 p-3 bg-neutral-900/40">
+            <div>
               <div className="flex items-center gap-2">
                 <Pill
                   tone={(first.side ?? "SELL") === "SELL" ? "red" : "green"}
