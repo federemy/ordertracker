@@ -367,29 +367,6 @@ export default function App() {
 
         {/* ===== RESUMEN MOBILE (Orden 1 + Neto simple) ===== */}
         <section className="md:hidden order-0 p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm text-neutral-400">Resumen (mobile)</div>
-            {lastUpdated && (
-              <span className="text-xs text-neutral-400">
-                Última: {new Date(lastUpdated).toLocaleTimeString()}
-              </span>
-            )}
-          </div>
-
-          {/* Δ Neto simple global */}
-          <div className="mt-2 text-neutral-300 text-sm">
-            Δ Neto (simple):{" "}
-            <span
-              className={cn(
-                "font-semibold tabular-nums",
-                totalNetNowSimple >= 0 ? "text-emerald-400" : "text-rose-400"
-              )}
-            >
-              {money.format(totalNetNowSimple)}
-            </span>
-            <span className="text-neutral-500"> (Bruto − fee 0.15% USDT)</span>
-          </div>
-
           {/* Orden 1 */}
           {first ? (
             <div className="mt-3 grid gap-2 rounded-xl border border-neutral-800 p-3 bg-neutral-900/40">
