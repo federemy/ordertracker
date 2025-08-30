@@ -1,22 +1,46 @@
 import type { Handler } from "@netlify/functions";
 import webpush from "web-push";
-import { LAST_SUB } from "./save-subscription"; // MVP (comparten proceso si hay warm start)
+import { getSubscriptions } from "./save-subscription";
 
-const pub = process.env.VAPID_PUBLIC_KEY!;
-const priv = process.env.VAPID_PRIVATE_KEY!;
-const subject = process.env.VAPID_SUBJECT || "mailto:you@example.com";
-webpush.setVapidDetails(subject, pub, priv);
+const PUB = process.env.VAPID_PUBLIC_KEY;
+const PRIV = process.env.VAPID_PRIVATE_KEY;
+
+if (!PUB || !PRIV) {
+  console.error("❌ Falta VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY en env");
+}
+
+webpush.setVapidDetails("mailto:tu@mail.com", PUB!, PRIV!);
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== "POST")
-    return { statusCode: 405, body: "Method Not Allowed" };
-
-  try {
-    if (!LAST_SUB) return { statusCode: 400, body: "No subscription yet" };
-    const { title = "Test", body = "Hola 👋" } = JSON.parse(event.body || "{}");
-    await webpush.sendNotification(LAST_SUB, JSON.stringify({ title, body }));
-    return { statusCode: 200, body: "Sent" };
-  } catch (e: any) {
-    return { statusCode: 500, body: e?.message || "Error" };
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method not allowed" };
   }
+
+  const { title = "🔔 Notificación", body = "Mensaje vacío" } = JSON.parse(
+    event.body || "{}"
+  );
+
+  const subs = getSubscriptions();
+  if (!subs.length) {
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ ok: false, msg: "No hay subs" }),
+    };
+  }
+
+  const results: any[] = [];
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification(sub, JSON.stringify({ title, body }));
+      results.push({ endpoint: sub.endpoint, ok: true });
+    } catch (err) {
+      console.error("send-push error", err);
+      results.push({ endpoint: sub.endpoint, ok: false, error: String(err) });
+    }
+  }
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ ok: true, results }),
+  };
 };
