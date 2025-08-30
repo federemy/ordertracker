@@ -10,12 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@netlify/blobs": "^10.0.10",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "recharts": "^3.1.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@netlify/functions": "^4.2.5",
     "@tailwindcss/cli": "^4.1.12",
     "@tailwindcss/postcss": "^4.1.12",
     "@types/react": "^19.1.10",
@@ -30,6 +32,7 @@
     "tailwindcss": "^4.1.12",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
-    "vite": "^7.1.2"
+    "vite": "^7.1.2",
+    "web-push": "^3.6.7"
   }
 }

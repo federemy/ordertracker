@@ -47,7 +47,7 @@ function Pill({
 
 /* ===== Config ===== */
 const REFRESH_MS_DEFAULT = 60000; // 60s auto-refresh
-const FEE_RATE_SPOT = 0.0015; // 0.10% Binance
+const FEE_RATE_SPOT = 0.0015; // 0.15% Binance
 
 /* ===== Binance symbols ===== */
 const BINANCE_SYMBOLS: Record<string, string> = {
@@ -91,6 +91,44 @@ function pctDiffVsEntry(o: Order, current: number) {
       ? (o.price - current) / o.price
       : (current - o.price) / o.price;
   return pct * 100;
+}
+// utils/push.ts (si preferís separado)
+async function registerSW() {
+  if (!("serviceWorker" in navigator)) return null;
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    return reg;
+  } catch {
+    return null;
+  }
+}
+
+function urlBase64ToUint8Array(base64: string) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const base64Safe = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64Safe);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+async function subscribePush(
+  reg: ServiceWorkerRegistration,
+  publicKey: string
+) {
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Permiso denegado");
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey),
+  });
+  await fetch("/.netlify/functions/save-subscription", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sub),
+  });
+  return sub;
 }
 
 export default function App() {
@@ -136,6 +174,19 @@ export default function App() {
     );
   };
 
+  const [pushReady, setPushReady] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const reg = await registerSW();
+      if (!reg) return;
+      try {
+        const pub = import.meta.env.VITE_VAPID_PUBLIC as string; // poné tu VAPID public
+        await subscribePush(reg, pub);
+        setPushReady(true);
+      } catch {}
+    })();
+  }, []);
+
   const prevSignRef = useRef<Record<string, number>>({});
 
   /* ===== Persistencia ===== */
@@ -145,6 +196,24 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(LS_PRICES, JSON.stringify(prices));
   }, [prices]);
+  useEffect(() => {
+    (async () => {
+      const reg = await registerSW();
+      if (!reg) return;
+      try {
+        const PUB = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
+        if (!PUB) {
+          console.warn("Falta VITE_VAPID_PUBLIC_KEY en variables de entorno");
+          return;
+        }
+        await subscribePush(reg, PUB);
+        pushToast("🔔 Notificaciones activadas", "info");
+      } catch (e) {
+        console.error("Error suscribiendo push", e);
+        pushToast("No se pudo activar notificaciones", "error");
+      }
+    })();
+  }, []);
 
   /* ===== Helpers ===== */
   const addOrder = () => {
@@ -486,6 +555,23 @@ export default function App() {
               )}
             >
               {loading ? "Actualizando..." : "Actualizar ahora"}
+            </button>
+
+            <button
+              onClick={async () => {
+                await fetch("/.netlify/functions/send-push", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: "🔔 Test",
+                    body: "Llegó bien al celu 🎉",
+                  }),
+                });
+              }}
+              disabled={!pushReady}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
+            >
+              Probar notificación
             </button>
 
             <div className="grow" />
