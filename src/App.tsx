@@ -174,7 +174,7 @@ export default function App() {
     );
   };
 
-  const [pushReady, setPushReady] = useState(false);
+  const [, setPushReady] = useState(false);
   useEffect(() => {
     (async () => {
       const reg = await registerSW();
