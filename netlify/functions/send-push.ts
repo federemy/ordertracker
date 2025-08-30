@@ -1,43 +1,22 @@
 import type { Handler } from "@netlify/functions";
-import { getStore } from "@netlify/blobs";
 import webpush from "web-push";
+import { LAST_SUB } from "./save-subscription"; // MVP (comparten proceso si hay warm start)
 
-const SUBS_KEY = "subs";
-
-const VAPID_PUBLIC = process.env.VAPID_PUBLIC!;
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE!;
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:you@example.com";
-
-webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+const pub = process.env.VAPID_PUBLIC_KEY!;
+const priv = process.env.VAPID_PRIVATE_KEY!;
+const subject = process.env.VAPID_SUBJECT || "mailto:you@example.com";
+webpush.setVapidDetails(subject, pub, priv);
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== "POST") {
+  if (event.httpMethod !== "POST")
     return { statusCode: 405, body: "Method Not Allowed" };
-  }
 
   try {
-    const { title, body } = JSON.parse(event.body || "{}");
-    const store = getStore({ name: "push-subs" });
-    const raw = (await store.get(SUBS_KEY)) || "[]";
-    const subs: any[] = JSON.parse(raw);
-
-    if (!subs.length) {
-      return { statusCode: 200, body: "No hay suscripciones" };
-    }
-
-    const payload = JSON.stringify({
-      title: title || "🔔 Test de notificación",
-      body: body || "Si ves esto, las push funcionan 👌",
-      url: "/", // adonde abre al tocar la noti
-    });
-
-    // Enviar a todas (ignoramos errores de endpoints caducados)
-    await Promise.allSettled(
-      subs.map((s) => webpush.sendNotification(s, payload))
-    );
-
-    return { statusCode: 200, body: "Enviado" };
+    if (!LAST_SUB) return { statusCode: 400, body: "No subscription yet" };
+    const { title = "Test", body = "Hola 👋" } = JSON.parse(event.body || "{}");
+    await webpush.sendNotification(LAST_SUB, JSON.stringify({ title, body }));
+    return { statusCode: 200, body: "Sent" };
   } catch (e: any) {
-    return { statusCode: 500, body: String(e?.message || e) };
+    return { statusCode: 500, body: e?.message || "Error" };
   }
 };

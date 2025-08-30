@@ -180,7 +180,7 @@ export default function App() {
       const reg = await registerSW();
       if (!reg) return;
       try {
-        const pub = import.meta.env.VITE_VAPID_PUBLIC as string; // poné tu VAPID public
+        const pub = import.meta.env.VITE_VAPID_PUBLIC_KEY as string; // poné tu VAPID public
         await subscribePush(reg, pub);
         setPushReady(true);
       } catch {}
@@ -558,17 +558,16 @@ export default function App() {
             </button>
 
             <button
-              onClick={async () => {
-                await fetch("/.netlify/functions/send-push", {
+              onClick={() =>
+                fetch("/.netlify/functions/send-push", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     title: "🔔 Test",
-                    body: "Llegó bien al celu 🎉",
+                    body: "Si ves esto, anda 👌",
                   }),
-                });
-              }}
-              disabled={!pushReady}
+                })
+              }
               className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
             >
               Probar notificación
@@ -580,6 +579,108 @@ export default function App() {
                 Última: {new Date(lastUpdated).toLocaleTimeString()}
               </span>
             )}
+          </div>
+        </section>
+
+        <section className="p-3 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-2">
+          <div className="text-sm font-semibold">
+            Debug de notificaciones (solo vos lo ves)
+          </div>
+          <div className="flex gap-2 flex-wrap text-sm">
+            <button
+              onClick={async () => {
+                alert(`Permiso: ${Notification.permission}`);
+              }}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+            >
+              Ver permiso
+            </button>
+
+            <button
+              onClick={async () => {
+                if (!("serviceWorker" in navigator)) return alert("No SW");
+                const reg = await navigator.serviceWorker.getRegistration();
+                if (!reg) return alert("SW no registrado");
+                const sub = await reg.pushManager.getSubscription();
+                if (!sub) return alert("Sin suscripción");
+                // mostrar suscripción
+                alert(`Sub OK: ${sub.endpoint.slice(0, 38)}...`);
+                console.log("SUBSCRIPTION JSON >>>", JSON.stringify(sub));
+              }}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+            >
+              Ver suscripción
+            </button>
+
+            <button
+              onClick={async () => {
+                // test local: muestra notificación SIN ir al backend
+                if (!("serviceWorker" in navigator)) return alert("No SW");
+                const reg = await navigator.serviceWorker.getRegistration();
+                if (!reg) return alert("SW no registrado");
+                if (Notification.permission !== "granted") {
+                  const p = await Notification.requestPermission();
+                  if (p !== "granted") return alert("Permiso denegado");
+                }
+                await reg.showNotification("🔔 Test local", {
+                  body: "SW activo ✅",
+                });
+              }}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+            >
+              Test local (sin backend)
+            </button>
+
+            <button
+              onClick={async () => {
+                const res = await fetch("/.netlify/functions/send-push", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: "🔔 Test push",
+                    body: "end-to-end ✅",
+                  }),
+                });
+                const txt = await res.text();
+                alert(`send-push → ${res.status} ${txt}`);
+              }}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+            >
+              Test push (backend)
+            </button>
+
+            <button
+              onClick={async () => {
+                // fuerza resuscripción (útil si cambiaste VAPID)
+                if (!("serviceWorker" in navigator)) return alert("No SW");
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.getSubscription();
+                if (sub) await sub.unsubscribe();
+                const key = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+                const toU8 = (b64: string) => {
+                  const p = "=".repeat((4 - (b64.length % 4)) % 4);
+                  const s = (b64 + p).replace(/-/g, "+").replace(/_/g, "/");
+                  const raw = atob(s);
+                  const out = new Uint8Array(raw.length);
+                  for (let i = 0; i < raw.length; i++)
+                    out[i] = raw.charCodeAt(i);
+                  return out;
+                };
+                const newSub = await reg.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: toU8(key),
+                });
+                await fetch("/.netlify/functions/save-subscription", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(newSub),
+                });
+                alert("Resuscripto ✅");
+              }}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+            >
+              Re-suscribir
+            </button>
           </div>
         </section>
 
