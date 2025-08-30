@@ -1,46 +1,64 @@
 import type { Handler } from "@netlify/functions";
 import webpush from "web-push";
-import { getSubscriptions } from "./save-subscription";
 
-const PUB = process.env.VAPID_PUBLIC_KEY;
-const PRIV = process.env.VAPID_PRIVATE_KEY;
+const SUBS_KEY = "subs.json";
 
-if (!PUB || !PRIV) {
-  console.error("❌ Falta VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY en env");
+function assertVapid() {
+  const pub = process.env.VAPID_PUBLIC_KEY;
+  const priv = process.env.VAPID_PRIVATE_KEY;
+  if (!pub || !priv) {
+    throw new Error("VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set");
+  }
+  webpush.setVapidDetails("mailto:you@example.com", pub, priv);
 }
 
-webpush.setVapidDetails("mailto:tu@mail.com", PUB!, PRIV!);
+export const handler: Handler = async (event, context) => {
+  try {
+    assertVapid();
 
-export const handler: Handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
-  }
+    // Blobs
+    const blobs: any =
+      // @ts-ignore
+      context?.blob || (globalThis as any).netlify?.blobs;
 
-  const { title = "🔔 Notificación", body = "Mensaje vacío" } = JSON.parse(
-    event.body || "{}"
-  );
+    // Cargar suscripciones
+    const r = await blobs.get(SUBS_KEY);
+    const subs: any[] = r ? JSON.parse(await r.text()) : [];
+    if (!subs.length) {
+      return { statusCode: 200, body: "no subscriptions" };
+    }
 
-  const subs = getSubscriptions();
-  if (!subs.length) {
+    // Mensaje (permite GET para test rápido)
+    let title = "🔔 Test";
+    let body = "Push enviado desde send-push";
+    if (event.httpMethod === "POST" && event.body) {
+      const b = JSON.parse(event.body);
+      if (b?.title) title = String(b.title);
+      if (b?.body) body = String(b.body);
+    } else if (event.httpMethod === "GET") {
+      title = "🔔 Test (GET)";
+      body = "Función viva ✅";
+    }
+
+    const payload = JSON.stringify({ title, body });
+
+    let ok = 0;
+    for (const s of subs) {
+      try {
+        await webpush.sendNotification(s, payload);
+        ok++;
+      } catch {
+        // ignoramos fallos individuales (tokens viejos)
+      }
+    }
+
+    return { statusCode: 200, body: `sent=${ok}` };
+  } catch (e: any) {
     return {
-      statusCode: 200,
-      body: JSON.stringify({ ok: false, msg: "No hay subs" }),
+      statusCode: 500,
+      body: JSON.stringify({
+        error: String(e?.message || e),
+      }),
     };
   }
-
-  const results: any[] = [];
-  for (const sub of subs) {
-    try {
-      await webpush.sendNotification(sub, JSON.stringify({ title, body }));
-      results.push({ endpoint: sub.endpoint, ok: true });
-    } catch (err) {
-      console.error("send-push error", err);
-      results.push({ endpoint: sub.endpoint, ok: false, error: String(err) });
-    }
-  }
-
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ ok: true, results }),
-  };
 };
