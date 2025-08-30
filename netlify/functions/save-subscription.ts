@@ -1,39 +1,25 @@
 import type { Handler } from "@netlify/functions";
 
-const SUBS_KEY = "subs";
-type Sub = any;
+const SUBS_KEY = "subs.json";
 
-// Usamos un almacenamiento simple en memoria (resetea en cada deploy).
-// Para persistir, reemplazalo por Netlify KV o Fauna.
-let subs: Sub[] = [];
+export const handler: Handler = async (event, ctx) => {
+  if (event.httpMethod !== "POST")
+    return { statusCode: 405, body: "POST only" };
+  const sub = JSON.parse(event.body || "{}");
 
-export const handler: Handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
-  }
+  // @ts-ignore
+  const blob = ctx?.blob || (globalThis as any).netlify?.blobs;
+  const r = await blob.get(SUBS_KEY);
+  const arr: any[] = r ? JSON.parse(await r.text()) : [];
 
-  try {
-    const sub: Sub = JSON.parse(event.body || "{}");
-    if (!sub || !sub.endpoint) {
-      return { statusCode: 400, body: "Invalid subscription" };
-    }
+  // Evitar duplicados por endpoint
+  const endpoint = sub?.endpoint;
+  const next = endpoint
+    ? [sub, ...arr.filter((x: any) => x.endpoint !== endpoint)]
+    : arr;
 
-    // evita duplicados
-    if (!subs.find((s) => s.endpoint === sub.endpoint)) {
-      subs.push(sub);
-    }
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ ok: true, subsCount: subs.length }),
-    };
-  } catch (e) {
-    console.error("save-subscription error", e);
-    return { statusCode: 500, body: "Error saving subscription" };
-  }
+  await blob.set(SUBS_KEY, JSON.stringify(next), {
+    contentType: "application/json",
+  });
+  return { statusCode: 200, body: "OK" };
 };
-
-// Para que lo pueda importar send-push
-export function getSubscriptions() {
-  return subs;
-}

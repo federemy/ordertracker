@@ -3,9 +3,10 @@
   publish = "dist"
 
 [functions]
-  directory = "netlify/functions"
   node_bundler = "esbuild"
-
-# (opcional) permitir ESM/externals si hace falta
-[functions."send-push"]
   external_node_modules = ["web-push"]
+
+[[scheduled.functions]]
+  # corre cada minuto
+  path = "check-prices"
+  schedule = "*/1 * * * *"

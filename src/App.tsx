@@ -215,6 +215,14 @@ export default function App() {
     })();
   }, []);
 
+  useEffect(() => {
+    fetch("/.netlify/functions/save-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orders),
+    }).catch(() => {});
+  }, [orders]);
+
   /* ===== Helpers ===== */
   const addOrder = () => {
     if (!form.asset || !form.qty || !form.price) return;
