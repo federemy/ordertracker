@@ -177,6 +177,7 @@ export default function App() {
   };
 
   const prevSignRef = useRef<Record<string, number>>({});
+  const pushSentRef = useRef<Record<string, boolean>>({});
 
   /* ===== Persistencia local ===== */
   useEffect(() => {
@@ -301,27 +302,71 @@ export default function App() {
   }, [prices, orders, form.asset]);
 
   /* ===== Toasts por cruces (usando Δ bruto) ===== */
+  /* ===== Toasts + PUSH cuando cruza a ganancia ===== */
   useEffect(() => {
     orders.forEach((o) => {
       const current = prices[o.asset] || 0;
       const d = diffVsActual(o, current);
       const sign = d > 0 ? 1 : d < 0 ? -1 : 0;
+
       const prev = prevSignRef.current[o.id];
       if (prev === undefined) {
         prevSignRef.current[o.id] = sign;
-      } else if (prev !== sign) {
-        if (sign === 1)
+        pushSentRef.current[o.id] = sign === 1; // si ya arranca en ganancia, marcar como enviado
+        return;
+      }
+
+      // Si cambió el signo…
+      if (prev !== sign) {
+        // Toasts
+        if (sign === 1) {
           pushToast(
             `✅ Ganancia en ${o.side ?? "SELL"} ${o.asset}: ${money.format(d)}`,
             "success"
           );
-        if (sign === -1)
+        } else if (sign === -1) {
           pushToast(
             `⚠️ Pérdida en ${o.side ?? "SELL"} ${o.asset}: ${money.format(
               Math.abs(d)
             )}`,
             "error"
           );
+        }
+
+        // Reset del throttle cuando vuelva a pérdida o neutro
+        if (sign !== 1) pushSentRef.current[o.id] = false;
+
+        // PUSH solo cuando cruza a ganancia y no se envió antes en este ciclo
+        if (sign === 1 && !pushSentRef.current[o.id]) {
+          pushSentRef.current[o.id] = true; // marcar primero para evitar duplicados
+          (async () => {
+            try {
+              const title = `🟢 Ganancia en ${o.asset}`;
+              const body =
+                `${o.side === "BUY" ? "Compra" : "Venta"} a ${money.format(
+                  o.price
+                )} · ` +
+                `P/L ahora: +${money.format(d)} · Precio: ${money.format(
+                  current
+                )}`;
+
+              const res = await fetch("/.netlify/functions/send-push", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title, body }),
+              });
+
+              // si no hay subs guardadas, el backend devuelve ok:false (lo manejás en consola)
+              if (!res.ok) {
+                console.warn("send-push fallo", await res.text());
+              }
+            } catch (e) {
+              console.error("Error enviando push", e);
+            }
+          })();
+        }
+
+        // guardar nuevo signo
         prevSignRef.current[o.id] = sign;
       }
     });
