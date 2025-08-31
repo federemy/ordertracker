@@ -301,7 +301,6 @@ export default function App() {
     };
   }, [prices, orders, form.asset]);
 
-  /* ===== Toasts por cruces (usando Δ bruto) ===== */
   /* ===== Toasts + PUSH cuando cruza a ganancia ===== */
   useEffect(() => {
     orders.forEach((o) => {
@@ -312,11 +311,11 @@ export default function App() {
       const prev = prevSignRef.current[o.id];
       if (prev === undefined) {
         prevSignRef.current[o.id] = sign;
-        pushSentRef.current[o.id] = sign === 1; // si ya arranca en ganancia, marcar como enviado
+        // si ya arranca en ganancia, marcamos enviado para no spamear
+        pushSentRef.current[o.id] = sign === 1;
         return;
       }
 
-      // Si cambió el signo…
       if (prev !== sign) {
         // Toasts
         if (sign === 1) {
@@ -333,12 +332,13 @@ export default function App() {
           );
         }
 
-        // Reset del throttle cuando vuelva a pérdida o neutro
+        // si vuelve a pérdida/neutro, permitimos un nuevo envío cuando regrese a ganancia
         if (sign !== 1) pushSentRef.current[o.id] = false;
 
-        // PUSH solo cuando cruza a ganancia y no se envió antes en este ciclo
+        // PUSH sólo al pasar a ganancia
         if (sign === 1 && !pushSentRef.current[o.id]) {
-          pushSentRef.current[o.id] = true; // marcar primero para evitar duplicados
+          pushSentRef.current[o.id] = true;
+
           (async () => {
             try {
               const title = `🟢 Ganancia en ${o.asset}`;
@@ -350,27 +350,36 @@ export default function App() {
                   current
                 )}`;
 
+              // 👉 mandamos la suscripción activa (si existe) para que el backend la use directamente
               const res = await fetch("/.netlify/functions/send-push", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title, body }),
+                body: JSON.stringify({
+                  title,
+                  body,
+                  // si pushSub es null, el backend usará las guardadas
+                  subscription: pushSub ?? undefined,
+                }),
               });
 
-              // si no hay subs guardadas, el backend devuelve ok:false (lo manejás en consola)
-              if (!res.ok) {
-                console.warn("send-push fallo", await res.text());
+              const j = await res.json().catch(() => ({} as any));
+              if (!res.ok || (j && j.ok === false)) {
+                console.warn("send-push fallo", j || (await res.text()));
+                // feedback visible si falla
+                pushToast("No pude enviar push (ver consola)", "error");
               }
             } catch (e) {
               console.error("Error enviando push", e);
+              pushToast("No pude enviar push (error de red)", "error");
             }
           })();
         }
 
-        // guardar nuevo signo
         prevSignRef.current[o.id] = sign;
       }
     });
-  }, [prices, orders]);
+    // 👇 añadimos pushSub para asegurar que se envía con tu suscripción actual
+  }, [prices, orders, pushSub]);
 
   /* ===== Neto total (cerrar ahora) ===== */
   const totalNetNow = useMemo(() => {
