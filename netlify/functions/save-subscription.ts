@@ -1,31 +1,36 @@
 import type { Handler } from "@netlify/functions";
 
-const SUBS_KEY = "subs.json";
+const SUBS_KEY = "subs";
+type Sub = any;
 
-export const handler: Handler = async (event, context) => {
+export const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "POST only" };
+    return { statusCode: 405, body: "Method not allowed" };
   }
-
-  const sub = JSON.parse(event.body || "{}");
-  if (!sub?.endpoint) {
-    return { statusCode: 400, body: "Invalid subscription" };
-  }
-
-  // Netlify Blobs (disponible vía context.blob)
-  const blobs: any =
-    // @ts-ignore
-    context?.blob || (globalThis as any).netlify?.blobs;
-
-  const existing = await blobs.get(SUBS_KEY);
-  const arr: any[] = existing ? JSON.parse(await existing.text()) : [];
-
-  // Evitar duplicados por endpoint
-  const next = [sub, ...arr.filter((x: any) => x.endpoint !== sub.endpoint)];
-
-  await blobs.set(SUBS_KEY, JSON.stringify(next), {
-    contentType: "application/json",
-  });
-
-  return { statusCode: 200, body: "OK" };
+  const body = JSON.parse(event.body || "{}");
+  const subs = await getSubscriptions();
+  subs.push(body);
+  await saveSubscriptions(subs);
+  return { statusCode: 200, body: JSON.stringify({ ok: true }) };
 };
+
+// helpers simples usando KV de Netlify o filesystem (mock)
+async function loadJSON<T>(key: string): Promise<T | null> {
+  // si usás Netlify Blobs:
+  // @ts-ignore
+  const blob = await import("@netlify/blobs");
+  const s = await blob.get(key);
+  return s ? (JSON.parse(s) as T) : null;
+}
+async function saveJSON<T>(key: string, value: T) {
+  // @ts-ignore
+  const blob = await import("@netlify/blobs");
+  await blob.set(key, JSON.stringify(value));
+}
+
+export async function getSubscriptions(): Promise<Sub[]> {
+  return (await loadJSON<Sub[]>(SUBS_KEY)) ?? [];
+}
+async function saveSubscriptions(subs: Sub[]) {
+  await saveJSON(SUBS_KEY, subs);
+}

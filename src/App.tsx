@@ -47,7 +47,7 @@ function Pill({
 
 /* ===== Config ===== */
 const REFRESH_MS_DEFAULT = 60000; // 60s auto-refresh
-const FEE_RATE_SPOT = 0.0015; // 0.15% Binance
+const FEE_RATE_SPOT = 0.0015; // 0.15% (para cierre)
 
 /* ===== Binance symbols ===== */
 const BINANCE_SYMBOLS: Record<string, string> = {
@@ -76,12 +76,12 @@ function diffVsActual(o: Order, current: number) {
     : (current - o.price) * o.qty; // BUY: si el precio sube vs tu compra, ganás
 }
 
-/** Fee en USDT del cierre (tu definición mobile): 0.15% sobre valor actual en USDT */
+/** Fee en USDT del cierre (def: 0.15% sobre valor actual en USDT) */
 function feeCloseUsdSimple(o: Order, current: number) {
   return current > 0 ? o.qty * current * FEE_RATE_SPOT : 0;
 }
 
-/** NUEVO: Δ % vs precio de entrada, signo favorable según lado */
+/** Δ % vs precio de entrada, signo favorable según lado */
 function pctDiffVsEntry(o: Order, current: number) {
   if (!o.price || !Number.isFinite(current) || current <= 0) return null;
   const side = o.side ?? "SELL";
@@ -92,25 +92,22 @@ function pctDiffVsEntry(o: Order, current: number) {
       : (current - o.price) / o.price;
   return pct * 100;
 }
-// utils/push.ts (si preferís separado)
-async function registerSW() {
-  if (!("serviceWorker" in navigator)) return null;
-  try {
-    const reg = await navigator.serviceWorker.register("/sw.js");
-    await navigator.serviceWorker.ready;
-    return reg;
-  } catch {
-    return null;
-  }
+
+/* ===== Push helpers ===== */
+function b64ToUint8(base64: string) {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
 }
 
-function urlBase64ToUint8Array(base64: string) {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const base64Safe = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64Safe);
-  const output = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
-  return output;
+async function registerSW() {
+  if (!("serviceWorker" in navigator)) return null;
+  const reg = await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  return reg;
 }
 
 async function subscribePush(
@@ -118,11 +115,12 @@ async function subscribePush(
   publicKey: string
 ) {
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("Permiso denegado");
+  if (perm !== "granted") throw new Error("Permiso de notificación denegado");
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(publicKey),
+    applicationServerKey: b64ToUint8(publicKey),
   });
+  // Persistí la suscripción en backend
   await fetch("/.netlify/functions/save-subscription", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -131,6 +129,7 @@ async function subscribePush(
   return sub;
 }
 
+/* ===================== APP ===================== */
 export default function App() {
   /* ===== State ===== */
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -158,6 +157,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
+  // Push
+  const [pushSub, setPushSub] = useState<any | null>(null);
+
   /* ===== Toasts ===== */
   type Toast = {
     id: string;
@@ -174,39 +176,29 @@ export default function App() {
     );
   };
 
-  const [, setPushReady] = useState(false);
-  useEffect(() => {
-    (async () => {
-      const reg = await registerSW();
-      if (!reg) return;
-      try {
-        const pub = import.meta.env.VITE_VAPID_PUBLIC_KEY as string; // poné tu VAPID public
-        await subscribePush(reg, pub);
-        setPushReady(true);
-      } catch {}
-    })();
-  }, []);
-
   const prevSignRef = useRef<Record<string, number>>({});
 
-  /* ===== Persistencia ===== */
+  /* ===== Persistencia local ===== */
   useEffect(() => {
     localStorage.setItem(LS_ORDERS, JSON.stringify(orders));
   }, [orders]);
   useEffect(() => {
     localStorage.setItem(LS_PRICES, JSON.stringify(prices));
   }, [prices]);
+
+  /* ===== Registro SW + Suscripción Push ===== */
   useEffect(() => {
     (async () => {
-      const reg = await registerSW();
-      if (!reg) return;
       try {
+        const reg = await registerSW();
+        if (!reg) return;
         const PUB = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
         if (!PUB) {
-          console.warn("Falta VITE_VAPID_PUBLIC_KEY en variables de entorno");
+          console.warn("Falta VITE_VAPID_PUBLIC_KEY");
           return;
         }
-        await subscribePush(reg, PUB);
+        const sub = await subscribePush(reg, PUB);
+        setPushSub(sub);
         pushToast("🔔 Notificaciones activadas", "info");
       } catch (e) {
         console.error("Error suscribiendo push", e);
@@ -215,6 +207,7 @@ export default function App() {
     })();
   }, []);
 
+  /* ===== Guardar órdenes en backend simple (opcional) ===== */
   useEffect(() => {
     fetch("/.netlify/functions/save-orders", {
       method: "POST",
@@ -293,12 +286,9 @@ export default function App() {
 
     const tick = () => fetchPricesBatch(computeTracked());
 
-    // primer fetch inmediato
-    tick();
-    // seguir refrescando incluso en background (el navegador puede trottle, pero no se pausa)
+    tick(); // primer fetch
     interval = setInterval(tick, REFRESH_MS_DEFAULT);
 
-    // si volvés a la tab, hacé un fetch inmediato para “catch up”
     const onVis = () => {
       if (document.visibilityState === "visible") tick();
     };
@@ -308,7 +298,6 @@ export default function App() {
       if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVis);
     };
-    // Dependencias: cuando cambian, recomputamos tracked y reiniciamos el intervalo
   }, [prices, orders, form.asset]);
 
   /* ===== Toasts por cruces (usando Δ bruto) ===== */
@@ -367,7 +356,7 @@ export default function App() {
     }, 0);
   }, [orders, prices]);
 
-  // % global: valor actual vs valor de entrada total
+  // % global
   const totalPctNow = useMemo(() => {
     let entryUsd = 0;
     let currentUsd = 0;
@@ -392,7 +381,7 @@ export default function App() {
     return ((currentUsd - entryUsd) / entryUsd) * 100;
   }, [orders, prices]);
 
-  // === Neto "simple" para MOBILE: sum(Bruto − Fee(USDT))
+  // Para resumen mobile (no se muestra pero mantiene cálculo)
   const totalNetNowSimple = useMemo(() => {
     return orders.reduce((sum, o) => {
       const current = prices[o.asset] || 0;
@@ -401,10 +390,9 @@ export default function App() {
       return sum + (bruto - feeUsd);
     }, 0);
   }, [orders, prices]);
+  void totalNetNowSimple;
 
-  void totalNetNowSimple; // ✅ cuenta como lectura, no afecta el bundle
-
-  // Mostrar total neto (modelo completo) en el título desktop
+  // Título con neto
   useEffect(() => {
     const positive = totalNetNow >= 0;
     const light = positive ? "🟢" : "🔴";
@@ -414,6 +402,25 @@ export default function App() {
         : "";
     document.title = `${light} Neto: ${money.format(totalNetNow)}${pctStr}`;
   }, [totalNetNow, totalPctNow]);
+
+  /* ===== Test desde frontend: enviar vía función a esta sub ===== */
+  async function testPushBackend() {
+    if (!pushSub) {
+      alert("No hay suscripción push (aceptá permisos primero)");
+      return;
+    }
+    const res = await fetch("/.netlify/functions/send-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "🔔 Test backend",
+        body: "Ping directo al server",
+        subscription: pushSub,
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    alert(`send-push → ${res.status} ${JSON.stringify(j)}`);
+  }
 
   /* ===== Render ===== */
   const first = orders[0];
@@ -429,10 +436,8 @@ export default function App() {
         <div
           className={cn(
             "fixed z-50 space-y-2",
-            // mobile → abajo centrado
-            "inset-x-0 bottom-4 flex flex-col items-center",
-            // desktop → abajo derecha
-            "md:inset-x-auto md:items-end md:right-4"
+            "inset-x-0 bottom-4 flex flex-col items-center", // mobile centrado
+            "md:inset-auto md:bottom-4 md:right-4 md:left-auto md:items-end" // desktop abajo derecha
           )}
         >
           {toasts.map((t) => (
@@ -454,7 +459,6 @@ export default function App() {
 
         {/* ===== RESUMEN MOBILE (Orden 1 + Neto simple) ===== */}
         <section className="md:hidden order-0 p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur">
-          {/* Orden 1 */}
           {first ? (
             <div>
               <div className="flex items-center gap-2">
@@ -538,7 +542,7 @@ export default function App() {
           )}
         </section>
 
-        {/* ===== Top bar (desktop) ===== */}
+        {/* ===== Top bar ===== */}
         <section className="sticky top-0 z-40 p-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/50 order-2 md:order-none">
           <div className="flex flex-wrap items-center gap-3">
             <select
@@ -574,16 +578,9 @@ export default function App() {
             </button>
 
             <button
-              onClick={() =>
-                fetch("/.netlify/functions/send-push", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    title: "🔔 Test",
-                    body: "Si ves esto, anda 👌",
-                  }),
-                })
-              }
+              onClick={async () => {
+                await testPushBackend();
+              }}
               className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
             >
               Probar notificación
@@ -598,6 +595,7 @@ export default function App() {
           </div>
         </section>
 
+        {/* ===== Debug notificaciones ===== */}
         <section className="p-3 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-2">
           <div className="text-sm font-semibold">
             Debug de notificaciones (solo vos lo ves)
@@ -619,7 +617,6 @@ export default function App() {
                 if (!reg) return alert("SW no registrado");
                 const sub = await reg.pushManager.getSubscription();
                 if (!sub) return alert("Sin suscripción");
-                // mostrar suscripción
                 alert(`Sub OK: ${sub.endpoint.slice(0, 38)}...`);
                 console.log("SUBSCRIPTION JSON >>>", JSON.stringify(sub));
               }}
@@ -630,7 +627,6 @@ export default function App() {
 
             <button
               onClick={async () => {
-                // test local: muestra notificación SIN ir al backend
                 if (!("serviceWorker" in navigator)) return alert("No SW");
                 const reg = await navigator.serviceWorker.getRegistration();
                 if (!reg) return alert("SW no registrado");
@@ -649,48 +645,22 @@ export default function App() {
 
             <button
               onClick={async () => {
-                const res = await fetch("/.netlify/functions/send-push", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    title: "🔔 Test push",
-                    body: "end-to-end ✅",
-                  }),
-                });
-                const txt = await res.text();
-                alert(`send-push → ${res.status} ${txt}`);
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
-            >
-              Test push (backend)
-            </button>
-
-            <button
-              onClick={async () => {
                 // fuerza resuscripción (útil si cambiaste VAPID)
                 if (!("serviceWorker" in navigator)) return alert("No SW");
                 const reg = await navigator.serviceWorker.ready;
                 const sub = await reg.pushManager.getSubscription();
                 if (sub) await sub.unsubscribe();
-                const key = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-                const toU8 = (b64: string) => {
-                  const p = "=".repeat((4 - (b64.length % 4)) % 4);
-                  const s = (b64 + p).replace(/-/g, "+").replace(/_/g, "/");
-                  const raw = atob(s);
-                  const out = new Uint8Array(raw.length);
-                  for (let i = 0; i < raw.length; i++)
-                    out[i] = raw.charCodeAt(i);
-                  return out;
-                };
+                const key = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
                 const newSub = await reg.pushManager.subscribe({
                   userVisibleOnly: true,
-                  applicationServerKey: toU8(key),
+                  applicationServerKey: b64ToUint8(key),
                 });
                 await fetch("/.netlify/functions/save-subscription", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(newSub),
                 });
+                setPushSub(newSub);
                 alert("Resuscripto ✅");
               }}
               className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
@@ -804,7 +774,6 @@ export default function App() {
                 <th className="px-3 py-2 text-right">Total</th>
                 <th className="px-3 py-2 text-right">Fee operación (0.15%)</th>
                 <th className="px-3 py-2 text-right">Δ vs actual</th>
-                {/* NUEVO */}
                 <th className="px-3 py-2 text-right">Δ % vs entrada</th>
                 <th className="px-3 py-2 text-right">Δ neto (cerrar ahora)</th>
                 <th className="px-3 py-2 text-right">Break-even USD</th>
@@ -820,7 +789,6 @@ export default function App() {
             <tbody className="[&_tr:nth-child(even)]:bg-neutral-900/20">
               {orders.length === 0 ? (
                 <tr>
-                  {/* colSpan actualizado por nueva columna */}
                   <td
                     colSpan={14}
                     className="text-center text-neutral-500 py-6"
@@ -836,29 +804,29 @@ export default function App() {
 
                   const totalUsd = o.qty * o.price;
 
-                  // Δ bruto vs precio actual
+                  // Δ bruto
                   const diff = diffVsActual(o, current);
 
-                  // NUEVO: Δ % vs entrada
+                  // Δ %
                   const pct = pctDiffVsEntry(o, current);
                   const pctStr =
                     pct == null
                       ? "—"
                       : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 
-                  // Fee de la operación de CIERRE (modelo “tabla original”)
+                  // Fee de CIERRE mostrado
                   let feeCloseUsd = 0;
                   if (isSell) {
                     if (current > 0) {
                       const baseRebuyGross = totalUsd / current;
                       const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT; // en base
-                      feeCloseUsd = feeBuyBase * current; // mostrado en USD
+                      feeCloseUsd = feeBuyBase * current; // a USD
                     }
                   } else {
-                    feeCloseUsd = o.qty * current * FEE_RATE_SPOT; // fee de venta
+                    feeCloseUsd = o.qty * current * FEE_RATE_SPOT; // venta
                   }
 
-                  // Δ neto al cerrar ahora (modelo “tabla original”)
+                  // Δ neto al cerrar ahora
                   let deltaUsdCloseNow = 0;
                   if (isSell) {
                     if (current > 0) {
@@ -887,8 +855,6 @@ export default function App() {
                       o.qty * current * (1 - FEE_RATE_SPOT);
                     const cost = totalUsd;
                     usdtLeftoverCloseNow = proceedsAfterSell - cost;
-                  } else {
-                    usdtLeftoverCloseNow = 0;
                   }
 
                   // ETH objetivo (recomprando TODO ahora)
@@ -931,8 +897,6 @@ export default function App() {
                       >
                         {money.format(diff)}
                       </td>
-
-                      {/* NUEVO: Δ % vs entrada */}
                       <td
                         className={cn(
                           "px-3 py-2 text-right font-semibold tabular-nums",
@@ -941,7 +905,6 @@ export default function App() {
                       >
                         {pctStr}
                       </td>
-
                       <td
                         className={cn(
                           "px-3 py-2 text-right font-semibold tabular-nums",

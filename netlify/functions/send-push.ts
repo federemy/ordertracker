@@ -1,64 +1,68 @@
 import type { Handler } from "@netlify/functions";
 import webpush from "web-push";
+import { getSubscriptions } from "./save-subscription";
 
-const SUBS_KEY = "subs.json";
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY!;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
 
-function assertVapid() {
-  const pub = process.env.VAPID_PUBLIC_KEY;
-  const priv = process.env.VAPID_PRIVATE_KEY;
-  if (!pub || !priv) {
-    throw new Error("VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set");
+webpush.setVapidDetails(
+  "mailto:you@example.com",
+  VAPID_PUBLIC_KEY,
+  VAPID_PRIVATE_KEY
+);
+
+type SendResult = { endpoint: string; ok: boolean; error?: string };
+
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method not allowed" };
   }
-  webpush.setVapidDetails("mailto:you@example.com", pub, priv);
-}
 
-export const handler: Handler = async (event, context) => {
-  try {
-    assertVapid();
+  const { title, body, subscription } = JSON.parse(event.body || "{}");
 
-    // Blobs
-    const blobs: any =
-      // @ts-ignore
-      context?.blob || (globalThis as any).netlify?.blobs;
-
-    // Cargar suscripciones
-    const r = await blobs.get(SUBS_KEY);
-    const subs: any[] = r ? JSON.parse(await r.text()) : [];
-    if (!subs.length) {
-      return { statusCode: 200, body: "no subscriptions" };
+  // si vino una suscripción puntual, la uso directamente (modo test)
+  if (subscription) {
+    try {
+      await webpush.sendNotification(
+        subscription,
+        JSON.stringify({ title, body })
+      );
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    } catch (e: any) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: String(e?.message || e) }),
+      };
     }
+  }
 
-    // Mensaje (permite GET para test rápido)
-    let title = "🔔 Test";
-    let body = "Push enviado desde send-push";
-    if (event.httpMethod === "POST" && event.body) {
-      const b = JSON.parse(event.body);
-      if (b?.title) title = String(b.title);
-      if (b?.body) body = String(b.body);
-    } else if (event.httpMethod === "GET") {
-      title = "🔔 Test (GET)";
-      body = "Función viva ✅";
-    }
-
-    const payload = JSON.stringify({ title, body });
-
-    let ok = 0;
-    for (const s of subs) {
-      try {
-        await webpush.sendNotification(s, payload);
-        ok++;
-      } catch {
-        // ignoramos fallos individuales (tokens viejos)
-      }
-    }
-
-    return { statusCode: 200, body: `sent=${ok}` };
-  } catch (e: any) {
+  // si no, envío a todas las guardadas
+  const subs = await getSubscriptions();
+  if (!subs.length) {
     return {
-      statusCode: 500,
+      statusCode: 200,
       body: JSON.stringify({
-        error: String(e?.message || e),
+        ok: true,
+        note: "No hay suscripciones guardadas",
       }),
     };
   }
+
+  const payload = { title: title || "Ping", body: body || "Hola 👋" };
+  const results: SendResult[] = [];
+
+  for (const sub of subs as any[]) {
+    try {
+      await webpush.sendNotification(sub, JSON.stringify(payload));
+      results.push({ endpoint: sub?.endpoint, ok: true });
+    } catch (e: any) {
+      results.push({
+        endpoint: sub?.endpoint,
+        ok: false,
+        error: String(e?.message || e),
+      });
+    }
+  }
+
+  return { statusCode: 200, body: JSON.stringify({ ok: true, results }) };
 };
