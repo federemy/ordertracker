@@ -577,15 +577,6 @@ export default function App() {
               {loading ? "Actualizando..." : "Actualizar ahora"}
             </button>
 
-            <button
-              onClick={async () => {
-                await testPushBackend();
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
-            >
-              Probar notificación
-            </button>
-
             <div className="grow" />
             {lastUpdated && (
               <span className="text-sm text-neutral-400">
