@@ -6,7 +6,20 @@
   node_bundler = "esbuild"
   external_node_modules = ["web-push"]
 
-[[scheduled.functions]]
-  # corre cada minuto
-  path = "check-prices"
+# === Scheduled Functions (CRON) ===
+# Corre "cron-check" cada 1 minuto
+[[scheduled_functions]]
+  path = "cron-check"
   schedule = "*/1 * * * *"
+
+# Opcional: también podés dejar las funciones normales explícitas
+# (Netlify detecta automáticamente, pero lo dejamos por claridad)
+[functions."send-push"]
+  external_node_modules = ["web-push"]
+  node_bundler = "esbuild"
+
+[functions."save-subscription"]
+  node_bundler = "esbuild"
+
+[functions."save-orders"]
+  node_bundler = "esbuild"

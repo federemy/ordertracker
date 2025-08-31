@@ -160,6 +160,34 @@ export default function App() {
   // Push
   const [pushSub, setPushSub] = useState<any | null>(null);
 
+  async function postJSON(url: string, data: any) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  const saveOrdersDebounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!orders?.length) return;
+    if (saveOrdersDebounceRef.current)
+      clearTimeout(saveOrdersDebounceRef.current);
+    saveOrdersDebounceRef.current = window.setTimeout(async () => {
+      try {
+        await postJSON("/.netlify/functions/save-orders", orders);
+      } catch (e) {
+        console.error("save-orders error", e);
+      }
+    }, 600);
+    return () => {
+      if (saveOrdersDebounceRef.current)
+        clearTimeout(saveOrdersDebounceRef.current);
+    };
+  }, [orders]);
+
   /* ===== Toasts ===== */
   type Toast = {
     id: string;

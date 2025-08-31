@@ -1,36 +1,54 @@
 import type { Handler } from "@netlify/functions";
+import { getStore } from "./_store";
 
-const SUBS_KEY = "subs";
-type Sub = any;
+type PushSubscription = {
+  endpoint: string;
+  expirationTime: number | null;
+  keys: { p256dh: string; auth: string };
+};
+
+type SubscriptionsDB = {
+  list: PushSubscription[];
+};
+
+const SUBS_FALLBACK: SubscriptionsDB = { list: [] };
+
+export async function getSubscriptions(): Promise<PushSubscription[]> {
+  const store = await getStore<SubscriptionsDB>("subscriptions", SUBS_FALLBACK);
+  const db = await store.read();
+  return db.list;
+}
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
+    return { statusCode: 405, body: "Method Not Allowed" };
   }
-  const body = JSON.parse(event.body || "{}");
-  const subs = await getSubscriptions();
-  subs.push(body);
-  await saveSubscriptions(subs);
-  return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+
+  try {
+    const body = JSON.parse(event.body || "{}") as PushSubscription;
+    if (!body?.endpoint || !body?.keys?.p256dh || !body?.keys?.auth) {
+      return { statusCode: 400, body: "Invalid subscription" };
+    }
+
+    const store = await getStore<SubscriptionsDB>(
+      "subscriptions",
+      SUBS_FALLBACK
+    );
+    const db = await store.read();
+
+    // dedupe por endpoint
+    const exists = db.list.find((s) => s.endpoint === body.endpoint);
+    if (!exists) {
+      db.list.push(body);
+      await store.write(db);
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ ok: true }),
+      headers: { "Content-Type": "application/json" },
+    };
+  } catch (e: any) {
+    return { statusCode: 500, body: e?.message || "save-subscription error" };
+  }
 };
-
-// helpers simples usando KV de Netlify o filesystem (mock)
-async function loadJSON<T>(key: string): Promise<T | null> {
-  // si usás Netlify Blobs:
-  // @ts-ignore
-  const blob = await import("@netlify/blobs");
-  const s = await blob.get(key);
-  return s ? (JSON.parse(s) as T) : null;
-}
-async function saveJSON<T>(key: string, value: T) {
-  // @ts-ignore
-  const blob = await import("@netlify/blobs");
-  await blob.set(key, JSON.stringify(value));
-}
-
-export async function getSubscriptions(): Promise<Sub[]> {
-  return (await loadJSON<Sub[]>(SUBS_KEY)) ?? [];
-}
-async function saveSubscriptions(subs: Sub[]) {
-  await saveJSON(SUBS_KEY, subs);
-}
