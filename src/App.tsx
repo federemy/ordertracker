@@ -425,13 +425,21 @@ export default function App() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8">
       <div className="w-full mx-auto grid gap-6">
-        {/* ===== Toasts ===== */}
-        <div className="fixed top-4 right-4 space-y-2 z-50">
+        {/* Toasts */}
+        <div
+          className={cn(
+            "fixed z-50 space-y-2",
+            // mobile → abajo centrado
+            "inset-x-0 bottom-4 flex flex-col items-center",
+            // desktop → abajo derecha
+            "md:inset-x-auto md:items-end md:right-4"
+          )}
+        >
           {toasts.map((t) => (
             <div
               key={t.id}
               className={cn(
-                "px-4 py-2 rounded-lg text-white shadow-lg",
+                "px-4 py-2 rounded-lg text-white shadow-lg max-w-[90%] sm:max-w-sm",
                 t.variant === "error"
                   ? "bg-rose-600"
                   : t.variant === "info"
