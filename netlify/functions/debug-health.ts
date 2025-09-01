@@ -3,12 +3,10 @@ import { getList, setList } from "./_store";
 
 const handler: Handler = async () => {
   try {
-    // Blobs R/W
     const stamp = Date.now();
     await setList("health", "ping", { stamp });
     const back = await getList<any>("health", "ping");
 
-    // VAPID
     const hasPub = !!process.env.VAPID_PUBLIC_KEY;
     const hasPriv = !!process.env.VAPID_PRIVATE_KEY;
 

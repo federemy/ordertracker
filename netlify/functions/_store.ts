@@ -4,9 +4,15 @@ import path from "path";
 
 type Json = any;
 
-// Detectar producción en Netlify
-const isProd =
-  !!process.env.DEPLOY_URL || !!process.env.CONTEXT || !!process.env.NETLIFY; // cualquiera de estas suele estar en Netlify deploy
+async function useBlobs<T>(
+  fn: (mod: typeof import("@netlify/blobs")) => Promise<T>
+): Promise<T> {
+  // Intenta usar @netlify/blobs: si falla (dev local), hacemos fallback a archivos
+  // IMPORTANT: no caches the import fail because Netlify dev reloads often.
+  const mod = await import("@netlify/blobs").catch(() => null as any);
+  if (!mod) throw new Error("NO_BLOBS");
+  return fn(mod);
+}
 
 async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true }).catch(() => {});
@@ -22,11 +28,14 @@ export async function getList<T = Json>(
   name: string,
   key: string
 ): Promise<T | null> {
-  if (isProd) {
-    const { getStore } = await import("@netlify/blobs");
-    const store = getStore({ name });
-    return (await store.get(key, { type: "json" })) as T | null;
-  } else {
+  try {
+    // 1) Camino principal: Netlify Blobs
+    return await useBlobs(async ({ getStore }) => {
+      const store = getStore({ name });
+      return (await store.get(key, { type: "json" })) as T | null;
+    });
+  } catch {
+    // 2) Fallback para desarrollo local
     const { base, file } = devFile(name, key);
     try {
       await ensureDir(base);
@@ -38,12 +47,19 @@ export async function getList<T = Json>(
   }
 }
 
-export async function setList(name: string, key: string, value: Json) {
-  if (isProd) {
-    const { getStore } = await import("@netlify/blobs");
-    const store = getStore({ name });
-    await store.set(key, JSON.stringify(value));
-  } else {
+export async function setList(
+  name: string,
+  key: string,
+  value: Json
+): Promise<void> {
+  try {
+    // 1) Camino principal: Netlify Blobs
+    await useBlobs(async ({ getStore }) => {
+      const store = getStore({ name });
+      await store.set(key, JSON.stringify(value));
+    });
+  } catch {
+    // 2) Fallback para desarrollo local
     const { base, file } = devFile(name, key);
     await ensureDir(base);
     await fs.writeFile(file, JSON.stringify(value, null, 2), "utf8");
