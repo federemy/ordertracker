@@ -1,55 +1,87 @@
 import type { Handler } from "@netlify/functions";
 import webpush from "web-push";
-import { getSubscriptions } from "./save-subscription";
+import { getList, setList } from "./_store";
 
-// Lee VAPID desde env (Netlify Dev carga .env automáticamente)
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const STORE = "subs";
+const KEY = "list";
 
-if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+const PUB = process.env.VAPID_PUBLIC_KEY;
+const PRIV = process.env.VAPID_PRIVATE_KEY;
+
+if (!PUB || !PRIV) {
   console.warn(
-    "⚠️ VAPID keys faltan en env. Configura VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY."
+    "⚠️ Faltan VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (definilas en .env para netlify dev y en el panel para prod)"
   );
 }
 
-webpush.setVapidDetails(
-  "mailto:push@yourdomain.com",
-  VAPID_PUBLIC_KEY || "missing",
-  VAPID_PRIVATE_KEY || "missing"
-);
+if (PUB && PRIV) {
+  webpush.setVapidDetails("mailto:you@example.com", PUB, PRIV);
+}
 
-export const handler: Handler = async (event) => {
+type Body = {
+  title?: string;
+  body?: string;
+  url?: string;
+  subscription?: any;
+};
+
+const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
   try {
-    const { title = "Test", body = "Hola 👋" } = JSON.parse(event.body || "{}");
-
-    const subs = await getSubscriptions();
-    if (!subs.length) {
-      return { statusCode: 200, body: JSON.stringify({ ok: true, sent: 0 }) };
+    if (!PUB || !PRIV) {
+      return { statusCode: 500, body: "Missing VAPID keys" };
     }
 
-    const payload = JSON.stringify({ title, body });
+    const data: Body = event.body ? JSON.parse(event.body) : {};
+    const payload = JSON.stringify({
+      title: data.title || "🔔 Notificación",
+      body: data.body || "Tocá para abrir",
+      url: data.url || "/",
+    });
 
-    const results = await Promise.allSettled(
-      subs.map((s) =>
-        webpush.sendNotification(s, payload, {
-          TTL: 30,
-        })
-      )
-    );
+    let targets: any[] = [];
+    if (data.subscription) {
+      targets = [data.subscription];
+    } else {
+      targets = (await getList<any[]>(STORE, KEY)) || [];
+    }
 
-    const sent = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
+    if (!targets.length) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ ok: true, sent: 0, note: "no subs" }),
+      };
+    }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ ok: true, sent, failed }),
-      headers: { "Content-Type": "application/json" },
-    };
+    let sent = 0;
+    const stillValid: any[] = [];
+
+    for (const sub of targets) {
+      try {
+        await webpush.sendNotification(sub, payload);
+        sent++;
+        stillValid.push(sub);
+      } catch (e: any) {
+        const code = e?.statusCode || e?.code;
+        console.warn("send-push to one sub failed:", code, e?.message);
+        if (code !== 404 && code !== 410) {
+          stillValid.push(sub);
+        }
+      }
+    }
+
+    if (!data.subscription) {
+      await setList(STORE, KEY, stillValid);
+    }
+
+    return { statusCode: 200, body: JSON.stringify({ ok: true, sent }) };
   } catch (e: any) {
+    console.error("send-push error", e);
     return { statusCode: 500, body: e?.message || "send-push error" };
   }
 };
+
+export { handler };

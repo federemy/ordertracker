@@ -1,41 +1,55 @@
-// Almacenamiento simple en JSON para local y prod (sin Blobs)
+// netlify/functions/_store.ts
+// Store unificado: usa Netlify Blobs en prod y un JSON en disco en dev.
 import { promises as fs } from "fs";
 import path from "path";
 
-const DATA_DIR = path.join(process.cwd(), ".netlify", "data");
-async function ensureDir() {
-  await fs.mkdir(DATA_DIR, { recursive: true });
+type Json = any;
+
+const isProd = !!process.env.NETLIFY || !!process.env.DEPLOY_URL;
+
+async function ensureDir(dir: string) {
+  await fs.mkdir(dir, { recursive: true }).catch(() => {});
 }
 
-async function readJSON<T>(file: string, fallback: T): Promise<T> {
-  await ensureDir();
-  const p = path.join(DATA_DIR, file);
-  try {
-    const raw = await fs.readFile(p, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+function devFile(name: string, key: string) {
+  const base = path.resolve(process.cwd(), ".netlify", "blob-dev", name);
+  const file = path.join(base, `${key}.json`);
+  return { base, file };
+}
+
+export async function getList<T = Json>(
+  name: string,
+  key: string
+): Promise<T | null> {
+  if (isProd) {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore({ name });
+    return (await store.get(key, { type: "json" })) as T | null;
+  } else {
+    const { base, file } = devFile(name, key);
+    try {
+      await ensureDir(base);
+      const raw = await fs.readFile(file, "utf8");
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
   }
 }
 
-async function writeJSON(file: string, data: any) {
-  await ensureDir();
-  const p = path.join(DATA_DIR, file);
-  await fs.writeFile(p, JSON.stringify(data, null, 2), "utf8");
-}
-
-export async function getStore<T>(
-  name: "subscriptions" | "orders",
-  fallback: T
-) {
-  const file = `${name}.json`;
-  return {
-    async read(): Promise<T> {
-      return readJSON<T>(file, fallback);
-    },
-    async write(data: T) {
-      await writeJSON(file, data);
-    },
-    filePath: path.join(DATA_DIR, file),
-  };
+export async function setList(
+  name: string,
+  key: string,
+  value: Json
+): Promise<void> {
+  if (isProd) {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore({ name });
+    // sin contentType para evitar error de tipos en algunas versiones
+    await store.set(key, JSON.stringify(value));
+  } else {
+    const { base, file } = devFile(name, key);
+    await ensureDir(base);
+    await fs.writeFile(file, JSON.stringify(value, null, 2), "utf8");
+  }
 }

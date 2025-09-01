@@ -82,9 +82,7 @@ async function loadJSON<T>(
 
 async function saveJSON(bucket: string, key: string, data: any) {
   const store = getStore(bucket);
-  await store.set(key, JSON.stringify(data), {
-    contentType: "application/json",
-  });
+  await store.set(key, JSON.stringify(data));
 }
 
 export const handler: Handler = async () => {
