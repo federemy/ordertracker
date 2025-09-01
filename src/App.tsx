@@ -681,13 +681,11 @@ export default function App() {
               onClick={async () => {
                 const reg = await navigator.serviceWorker.ready;
                 const sub = await reg.pushManager.getSubscription();
-                if (!sub) return alert("Sin suscripción");
+                if (!sub) return alert("❌ Sin suscripción todavía");
                 const txt = JSON.stringify(sub);
                 await navigator.clipboard.writeText(txt).catch(() => {});
-                alert("Suscripción copiada ✅");
-                console.log("SUB JSON >>>", txt);
+                alert("✅ Suscripción copiada al portapapeles");
               }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
             >
               Copiar suscripción
             </button>
