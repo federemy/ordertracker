@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.criptorder",
+      "sha256_cert_fingerprints": [
+        "F3:C1:A5:91:EA:12:A2:99:33:CF:89:4C:A1:A6:B3:30:91:61:2E:07:63:65:AD:77:80:E3:F9:50:60:DB:42:D4"
+      ]
+    }
+  }
+]
