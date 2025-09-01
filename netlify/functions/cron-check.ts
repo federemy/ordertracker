@@ -1,6 +1,7 @@
-import { Handler } from "@netlify/functions";
+// netlify/functions/cron-check.ts
+import type { Handler } from "@netlify/functions";
 import webPush from "web-push";
-import { getStore } from "@netlify/blobs";
+import { getList, setList } from "./_store";
 
 type Order = {
   id: string;
@@ -11,14 +12,14 @@ type Order = {
   side?: "BUY" | "SELL";
 };
 
-const ORDERS_BUCKET = "orders";
-const ORDERS_KEY = "orders.json";
+const STORE_ORDERS = "orders";
+const KEY_ORDERS = "list";
 
-const SUBS_BUCKET = "subs";
-const SUBS_KEY = "subs.json";
+const STORE_SUBS = "subs";
+const KEY_SUBS = "list";
 
-const STATE_BUCKET = "state";
-const SIGNS_KEY = "signs.json";
+const STORE_STATE = "state";
+const KEY_SIGNS = "signs";
 
 /** Fee spot (VIP0) – usá el mismo valor que en la web */
 const FEE_RATE_SPOT = 0.0015; // 0.15%
@@ -29,8 +30,9 @@ const SUBJECT = "mailto:you@example.com"; // opcional
 
 if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
   console.warn("VAPID keys missing in environment variables");
+} else {
+  webPush.setVapidDetails(SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
-webPush.setVapidDetails(SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 const binancePrice = async (asset: string): Promise<number | null> => {
   const symbol = `${asset.toUpperCase()}USDT`;
@@ -70,25 +72,11 @@ function deltaNetCloseNow(o: Order, current: number): number {
   }
 }
 
-async function loadJSON<T>(
-  bucket: string,
-  key: string,
-  fallback: T
-): Promise<T> {
-  const store = getStore(bucket);
-  const data = await store.get(key, { type: "json" });
-  return (data ?? fallback) as T;
-}
-
-async function saveJSON(bucket: string, key: string, data: any) {
-  const store = getStore(bucket);
-  await store.set(key, JSON.stringify(data));
-}
-
 export const handler: Handler = async () => {
   try {
-    // 1) Órdenes
-    const orders: Order[] = await loadJSON(ORDERS_BUCKET, ORDERS_KEY, []);
+    // 1) Órdenes (mismo bucket/key que save-orders)
+    const orders: Order[] =
+      (await getList<Order[]>(STORE_ORDERS, KEY_ORDERS)) || [];
     if (!Array.isArray(orders) || orders.length === 0) {
       return {
         statusCode: 200,
@@ -114,8 +102,8 @@ export const handler: Handler = async () => {
       };
     }
 
-    // 3) Subs
-    const subs: any[] = await loadJSON(SUBS_BUCKET, SUBS_KEY, []);
+    // 3) Subs (mismo bucket/key que save-subscription)
+    const subs: any[] = (await getList<any[]>(STORE_SUBS, KEY_SUBS)) || [];
     if (!Array.isArray(subs) || subs.length === 0) {
       return {
         statusCode: 200,
@@ -125,7 +113,8 @@ export const handler: Handler = async () => {
 
     // 4) Estado previo de signos (por orden)
     type Signs = Record<string, number>;
-    const prevSigns: Signs = await loadJSON(STATE_BUCKET, SIGNS_KEY, {});
+    const prevSigns: Signs =
+      (await getList<Signs>(STORE_STATE, KEY_SIGNS)) || {};
     const nextSigns: Signs = { ...prevSigns };
 
     // 5) Enviar push a todos; limpiar inválidos (410/404)
@@ -164,19 +153,19 @@ export const handler: Handler = async () => {
         const body = `${net >= 0 ? "+" : ""}${net.toFixed(2)} USD · ${
           o.side ?? "SELL"
         } ${o.qty} @ ${o.price} → ${curr.toFixed(2)}`;
-        await sendToAll({ title, body });
+        await sendToAll({ title, body, url: "/" });
         pushes++;
       }
 
       nextSigns[o.id] = sign;
     }
 
-    // 7) Guardar estado y subs
+    // 7) Guardar estado y (si corresponde) subs filtradas
     await Promise.all([
-      saveJSON(STATE_BUCKET, SIGNS_KEY, nextSigns),
-      saveJSON(
-        SUBS_BUCKET,
-        SUBS_KEY,
+      setList(STORE_STATE, KEY_SIGNS, nextSigns),
+      setList(
+        STORE_SUBS,
+        KEY_SUBS,
         stillValidSubs.length ? stillValidSubs : subs
       ),
     ]);
