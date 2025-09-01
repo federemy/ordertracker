@@ -1,11 +1,12 @@
 // netlify/functions/_store.ts
-// Store unificado: usa Netlify Blobs en prod y un JSON en disco en dev.
 import { promises as fs } from "fs";
 import path from "path";
 
 type Json = any;
 
-const isProd = !!process.env.NETLIFY || !!process.env.DEPLOY_URL;
+// Detectar producción en Netlify
+const isProd =
+  !!process.env.DEPLOY_URL || !!process.env.CONTEXT || !!process.env.NETLIFY; // cualquiera de estas suele estar en Netlify deploy
 
 async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true }).catch(() => {});
@@ -37,15 +38,10 @@ export async function getList<T = Json>(
   }
 }
 
-export async function setList(
-  name: string,
-  key: string,
-  value: Json
-): Promise<void> {
+export async function setList(name: string, key: string, value: Json) {
   if (isProd) {
     const { getStore } = await import("@netlify/blobs");
     const store = getStore({ name });
-    // sin contentType para evitar error de tipos en algunas versiones
     await store.set(key, JSON.stringify(value));
   } else {
     const { base, file } = devFile(name, key);

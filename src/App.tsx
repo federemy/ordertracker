@@ -244,7 +244,7 @@ export default function App() {
 
   /* ===== Guardar órdenes en backend simple (opcional) ===== */
   useEffect(() => {
-    fetch(`${API_BASE}/save-orders`, {
+    fetch(`/.netlify/functions/save-orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(orders),
