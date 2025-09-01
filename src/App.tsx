@@ -489,14 +489,18 @@ export default function App() {
 
   /* ===== Test desde frontend ===== */
   async function testPushBackend() {
-    const res = await fetch(`${API_BASE}/send-push`, {
+    if (!pushSub) {
+      alert("No hay suscripción push (aceptá permisos primero)");
+      return;
+    }
+    const res = await fetch("/.netlify/functions/send-push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: "🔔 Test backend",
-        body: "Ping directo al server",
-        // si querés forzar a la sub actual:
-        subscription: pushSub ?? undefined,
+        title: "🔔 Test directo",
+        body: "Llega incluso con la app cerrada",
+        url: "/",
+        subscription: pushSub, // 👈 clave: mandarla en el body
       }),
     });
     const j = await res.json().catch(() => ({}));
@@ -672,6 +676,20 @@ export default function App() {
               className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
             >
               Probar notificación
+            </button>
+            <button
+              onClick={async () => {
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.getSubscription();
+                if (!sub) return alert("Sin suscripción");
+                const txt = JSON.stringify(sub);
+                await navigator.clipboard.writeText(txt).catch(() => {});
+                alert("Suscripción copiada ✅");
+                console.log("SUB JSON >>>", txt);
+              }}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+            >
+              Copiar suscripción
             </button>
 
             <div className="grow" />
