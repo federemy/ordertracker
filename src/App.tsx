@@ -150,7 +150,7 @@ export async function enablePush() {
     }
 
     // 4) guardar en backend (PROD)
-    const resp = await fetch("/.netlify/functions/save-subscription", {
+    const resp = await fetch(`${API_BASE}/save-subscription`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(sub),
@@ -244,7 +244,7 @@ export default function App() {
 
   /* ===== Guardar órdenes en backend simple (opcional) ===== */
   useEffect(() => {
-    fetch("/.netlify/functions/save-orders", {
+    fetch(`${API_BASE}/save-orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(orders),
@@ -384,7 +384,7 @@ export default function App() {
                   current
                 )}`;
 
-              const res = await fetch("/.netlify/functions/send-push", {
+              const res = await fetch(`${API_BASE}/send-push`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -489,7 +489,7 @@ export default function App() {
 
   /* ===== Test desde frontend ===== */
   async function testPushBackend() {
-    const res = await fetch("/.netlify/functions/send-push", {
+    const res = await fetch(`${API_BASE}/send-push`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -739,7 +739,7 @@ export default function App() {
                   userVisibleOnly: true,
                   applicationServerKey: base64urlToUint8Array(key),
                 });
-                await fetch("/.netlify/functions/save-subscription", {
+                await fetch(`${API_BASE}/save-subscription`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(newSub),
