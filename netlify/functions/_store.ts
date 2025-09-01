@@ -4,15 +4,8 @@ import path from "path";
 
 type Json = any;
 
-async function useBlobs<T>(
-  fn: (mod: typeof import("@netlify/blobs")) => Promise<T>
-): Promise<T> {
-  // Intenta usar @netlify/blobs: si falla (dev local), hacemos fallback a archivos
-  // IMPORTANT: no caches the import fail because Netlify dev reloads often.
-  const mod = await import("@netlify/blobs").catch(() => null as any);
-  if (!mod) throw new Error("NO_BLOBS");
-  return fn(mod);
-}
+const isProd =
+  !!process.env.DEPLOY_URL || !!process.env.CONTEXT || !!process.env.NETLIFY;
 
 async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true }).catch(() => {});
@@ -24,18 +17,37 @@ function devFile(name: string, key: string) {
   return { base, file };
 }
 
+async function withBlobs<T>(
+  fn: (getStore: typeof import("@netlify/blobs").getStore) => Promise<T>
+): Promise<T> {
+  const mod = await import("@netlify/blobs").catch(() => null as any);
+  if (!mod || !mod.getStore) {
+    if (isProd) {
+      throw new Error(
+        "@netlify/blobs no disponible en producción. Instalá la dependencia (npm i @netlify/blobs) y redeploy."
+      );
+    }
+    // dev: forzamos fallback a archivos
+    throw new Error("BLOBS_UNAVAILABLE_DEV");
+  }
+  return fn(mod.getStore);
+}
+
 export async function getList<T = Json>(
   name: string,
   key: string
 ): Promise<T | null> {
   try {
-    // 1) Camino principal: Netlify Blobs
-    return await useBlobs(async ({ getStore }) => {
+    return await withBlobs(async (getStore) => {
       const store = getStore({ name });
       return (await store.get(key, { type: "json" })) as T | null;
     });
-  } catch {
-    // 2) Fallback para desarrollo local
+  } catch (e: any) {
+    if (isProd && e?.message && !e.message.includes("BLOBS_UNAVAILABLE_DEV")) {
+      // en prod NO hacemos fallback; devolvemos error hacia arriba
+      throw e;
+    }
+    // dev fallback
     const { base, file } = devFile(name, key);
     try {
       await ensureDir(base);
@@ -47,19 +59,17 @@ export async function getList<T = Json>(
   }
 }
 
-export async function setList(
-  name: string,
-  key: string,
-  value: Json
-): Promise<void> {
+export async function setList(name: string, key: string, value: Json) {
   try {
-    // 1) Camino principal: Netlify Blobs
-    await useBlobs(async ({ getStore }) => {
+    await withBlobs(async (getStore) => {
       const store = getStore({ name });
       await store.set(key, JSON.stringify(value));
     });
-  } catch {
-    // 2) Fallback para desarrollo local
+  } catch (e: any) {
+    if (isProd && e?.message && !e.message.includes("BLOBS_UNAVAILABLE_DEV")) {
+      throw e;
+    }
+    // dev fallback
     const { base, file } = devFile(name, key);
     await ensureDir(base);
     await fs.writeFile(file, JSON.stringify(value, null, 2), "utf8");
