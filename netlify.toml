@@ -11,6 +11,8 @@
 [[scheduled_functions]]
   path = "cron-check"
   schedule = "*/1 * * * *"
+  path = "cron-30m"
+  schedule = "*/30 * * * *"
 
 # Opcional: también podés dejar las funciones normales explícitas
 # (Netlify detecta automáticamente, pero lo dejamos por claridad)
