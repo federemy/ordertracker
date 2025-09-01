@@ -85,7 +85,6 @@ function feeCloseUsdSimple(o: Order, current: number) {
 function pctDiffVsEntry(o: Order, current: number) {
   if (!o.price || !Number.isFinite(current) || current <= 0) return null;
   const side = o.side ?? "SELL";
-  // BUY: (current - entry) / entry ; SELL: (entry - current) / entry
   const pct =
     side === "SELL"
       ? (o.price - current) / o.price
@@ -93,40 +92,83 @@ function pctDiffVsEntry(o: Order, current: number) {
   return pct * 100;
 }
 
-/* ===== Push helpers ===== */
-function b64ToUint8(base64: string) {
-  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
-  const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(b64);
+/* ===== Push helpers (cliente) ===== */
+// === Helpers ===
+function base64urlToUint8Array(base64url: string) {
+  const padding = "=".repeat((4 - (base64url.length % 4)) % 4);
+  const base64 = (base64url + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
 
+// Usá SIEMPRE el mismo origen para funciones
+const API_BASE = `${location.origin}/.netlify/functions`;
+
+// ⚠️ Poné en tu build la pública: VITE_VAPID_PUBLIC_KEY = (misma que en el server)
+const VAPID_PUBLIC_KEY =
+  (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY || "<TU_PUBLIC_KEY_VAPID>";
+
 async function registerSW() {
   if (!("serviceWorker" in navigator)) return null;
-  const reg = await navigator.serviceWorker.register("/sw.js");
+  const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
   await navigator.serviceWorker.ready;
   return reg;
 }
 
-async function subscribePush(
-  reg: ServiceWorkerRegistration,
-  publicKey: string
-) {
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("Permiso de notificación denegado");
-  const sub = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: b64ToUint8(publicKey),
-  });
-  // Persistí la suscripción en backend
-  await fetch("/.netlify/functions/save-subscription", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sub),
-  });
-  return sub;
+export async function enablePush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    alert("Tu navegador no soporta Push.");
+    return;
+  }
+  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.startsWith("<")) {
+    alert("Falta VAPID_PUBLIC_KEY en el cliente.");
+    return;
+  }
+
+  try {
+    // 1) registrar SW de raíz
+    const reg = await registerSW();
+    if (!reg) throw new Error("No se pudo registrar el Service Worker");
+
+    // 2) pedir permiso
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      alert("No diste permiso de notificaciones.");
+      return;
+    }
+
+    // 3) suscribirse (o reutilizar si ya existe)
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const key = base64urlToUint8Array(VAPID_PUBLIC_KEY);
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key,
+      });
+    }
+
+    // 4) guardar en backend (PROD)
+    const resp = await fetch(`${API_BASE}/save-subscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sub),
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => "");
+      console.error("save-subscription FAIL", resp.status, txt);
+      alert("No se pudo guardar la suscripción en el servidor.");
+      return;
+    }
+
+    console.log("SUBSCRIPTION JSON >>>", JSON.stringify(sub));
+    alert("Notificaciones activadas ✔");
+  } catch (err) {
+    console.error("enablePush error", err);
+    alert("Error al activar notificaciones.");
+  }
 }
 
 /* ===================== APP ===================== */
@@ -157,7 +199,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
-  // Push
+  // referencia de la suscripción local (si querés usarla en “Probar notificación”)
   const [pushSub, setPushSub] = useState<any | null>(null);
 
   /* ===== Toasts ===== */
@@ -187,30 +229,22 @@ export default function App() {
     localStorage.setItem(LS_PRICES, JSON.stringify(prices));
   }, [prices]);
 
-  /* ===== Registro SW + Suscripción Push ===== */
+  /* ===== (opcional) levantar sub actual si ya existe ===== */
   useEffect(() => {
     (async () => {
       try {
-        const reg = await registerSW();
+        if (!("serviceWorker" in navigator)) return;
+        const reg = await navigator.serviceWorker.getRegistration();
         if (!reg) return;
-        const PUB = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
-        if (!PUB) {
-          console.warn("Falta VITE_VAPID_PUBLIC_KEY");
-          return;
-        }
-        const sub = await subscribePush(reg, PUB);
-        setPushSub(sub);
-        pushToast("🔔 Notificaciones activadas", "info");
-      } catch (e) {
-        console.error("Error suscribiendo push", e);
-        pushToast("No se pudo activar notificaciones", "error");
-      }
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) setPushSub(sub);
+      } catch {}
     })();
   }, []);
 
   /* ===== Guardar órdenes en backend simple (opcional) ===== */
   useEffect(() => {
-    fetch("/.netlify/functions/save-orders", {
+    fetch(`${API_BASE}/save-orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(orders),
@@ -272,7 +306,7 @@ export default function App() {
     return Array.from(set).filter((a) => BINANCE_SYMBOLS[a]);
   }, [orders, form.asset]);
 
-  /* ===== Auto-refresh (siempre activo) ===== */
+  /* ===== Auto-refresh ===== */
   useEffect(() => {
     let interval: any = null;
 
@@ -350,8 +384,7 @@ export default function App() {
                   current
                 )}`;
 
-              // 👉 mandamos la suscripción activa (si existe) para que el backend la use directamente
-              const res = await fetch("/.netlify/functions/send-push", {
+              const res = await fetch(`${API_BASE}/send-push`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -365,7 +398,6 @@ export default function App() {
               const j = await res.json().catch(() => ({} as any));
               if (!res.ok || (j && j.ok === false)) {
                 console.warn("send-push fallo", j || (await res.text()));
-                // feedback visible si falla
                 pushToast("No pude enviar push (ver consola)", "error");
               }
             } catch (e) {
@@ -391,7 +423,6 @@ export default function App() {
 
       let deltaUsdCloseNow = 0;
       if (isSell) {
-        // SELL: recomprar ahora (fee en base)
         if (current > 0) {
           const baseRebuyGross = totalUsd / current;
           const feeBuyBase = baseRebuyGross * FEE_RATE_SPOT; // fee en base
@@ -400,7 +431,6 @@ export default function App() {
           deltaUsdCloseNow = deltaBase * current;
         }
       } else {
-        // BUY: vender ahora (fee de venta)
         const proceedsAfterSell = o.qty * current * (1 - FEE_RATE_SPOT);
         const cost = totalUsd; // fee de compra histórico ya pagado
         deltaUsdCloseNow = proceedsAfterSell - cost;
@@ -457,19 +487,16 @@ export default function App() {
     document.title = `${light} Neto: ${money.format(totalNetNow)}${pctStr}`;
   }, [totalNetNow, totalPctNow]);
 
-  /* ===== Test desde frontend: enviar vía función a esta sub ===== */
+  /* ===== Test desde frontend ===== */
   async function testPushBackend() {
-    if (!pushSub) {
-      alert("No hay suscripción push (aceptá permisos primero)");
-      return;
-    }
-    const res = await fetch("/.netlify/functions/send-push", {
+    const res = await fetch(`${API_BASE}/send-push`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: "🔔 Test backend",
         body: "Ping directo al server",
-        subscription: pushSub,
+        // si querés forzar a la sub actual:
+        subscription: pushSub ?? undefined,
       }),
     });
     const j = await res.json().catch(() => ({}));
@@ -490,8 +517,8 @@ export default function App() {
         <div
           className={cn(
             "fixed z-50 space-y-2",
-            "inset-x-0 bottom-4 flex flex-col items-center", // mobile centrado
-            "md:inset-auto md:bottom-4 md:right-4 md:left-auto md:items-end" // desktop abajo derecha
+            "inset-x-0 bottom-4 flex flex-col items-center",
+            "md:inset-auto md:bottom-4 md:right-4 md:left-auto md:items-end"
           )}
         >
           {toasts.map((t) => (
@@ -511,7 +538,7 @@ export default function App() {
           ))}
         </div>
 
-        {/* ===== RESUMEN MOBILE (Orden 1 + Neto simple) ===== */}
+        {/* ===== RESUMEN MOBILE ===== */}
         <section className="md:hidden order-0 p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur">
           {first ? (
             <div>
@@ -632,6 +659,13 @@ export default function App() {
             </button>
 
             <button
+              onClick={enablePush}
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
+            >
+              🔔 Activar notificaciones
+            </button>
+
+            <button
               onClick={async () => {
                 await testPushBackend();
               }}
@@ -671,6 +705,7 @@ export default function App() {
                 if (!reg) return alert("SW no registrado");
                 const sub = await reg.pushManager.getSubscription();
                 if (!sub) return alert("Sin suscripción");
+                setPushSub(sub);
                 alert(`Sub OK: ${sub.endpoint.slice(0, 38)}...`);
                 console.log("SUBSCRIPTION JSON >>>", JSON.stringify(sub));
               }}
@@ -682,12 +717,7 @@ export default function App() {
             <button
               onClick={async () => {
                 if (!("serviceWorker" in navigator)) return alert("No SW");
-                const reg = await navigator.serviceWorker.getRegistration();
-                if (!reg) return alert("SW no registrado");
-                if (Notification.permission !== "granted") {
-                  const p = await Notification.requestPermission();
-                  if (p !== "granted") return alert("Permiso denegado");
-                }
+                const reg = await navigator.serviceWorker.ready;
                 await reg.showNotification("🔔 Test local", {
                   body: "SW activo ✅",
                 });
@@ -704,12 +734,12 @@ export default function App() {
                 const reg = await navigator.serviceWorker.ready;
                 const sub = await reg.pushManager.getSubscription();
                 if (sub) await sub.unsubscribe();
-                const key = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
+                const key = VAPID_PUBLIC_KEY as string;
                 const newSub = await reg.pushManager.subscribe({
                   userVisibleOnly: true,
-                  applicationServerKey: b64ToUint8(key),
+                  applicationServerKey: base64urlToUint8Array(key),
                 });
-                await fetch("/.netlify/functions/save-subscription", {
+                await fetch(`${API_BASE}/save-subscription`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(newSub),
@@ -815,7 +845,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* ===== Tabla de órdenes (arriba en mobile) ===== */}
+        {/* ===== Tabla de órdenes ===== */}
         <section className="rounded-2xl overflow-auto border border-neutral-800 order-1 md:order-none">
           <table className="w-full text-sm">
             <thead className="bg-neutral-900/70 sticky top-0 backdrop-blur">
