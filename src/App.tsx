@@ -704,7 +704,7 @@ export default function App() {
           <div className="text-sm font-semibold">
             Debug de notificaciones (solo vos lo ves)
           </div>
-          <div className="flex gap-2 flex-wrap text-sm">
+          <div className="flex gap-2 flex-wrap text-sm align-items-center">
             <button
               onClick={async () => {
                 alert(`Permiso: ${Notification.permission}`);
@@ -767,6 +767,7 @@ export default function App() {
             >
               Re-suscribir
             </button>
+            <a href="./cryptobot.html">Analisis</a>
           </div>
         </section>
 
