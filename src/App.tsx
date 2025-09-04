@@ -1,5 +1,6 @@
-import React, { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { lazy, Suspense } from "react";
+
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 const Home = lazy(() => import("./pages/Home"));
 const Analisis = lazy(() => import("./pages/Analisis"));
