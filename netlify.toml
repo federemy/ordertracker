@@ -9,15 +9,13 @@
 # === Scheduled Functions ===
 [[scheduled_functions]]
   path = "cron-check"      # netlify/functions/cron-check.ts
-  schedule = "*/1 * * * *" # cada 1 minuto
+  schedule = "*/1 * * * *" # cada 1 minuto (si la vas a usar)
 
 [[scheduled_functions]]
   path = "cron-30m"        # netlify/functions/cron-30m.ts
   schedule = "*/30 * * * *" # cada 30 minutos
 
-
-# Opcional: también podés dejar las funciones normales explícitas
-# (Netlify detecta automáticamente, pero lo dejamos por claridad)
+# Funciones explícitas
 [functions."send-push"]
   external_node_modules = ["web-push"]
   node_bundler = "esbuild"

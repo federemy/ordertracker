@@ -1,29 +1,42 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
 # Logs
-logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# OS
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
 
-.env
+# Bubblewrap caches
+.bubblewrap/
 
-# Local Netlify folder
-.netlify
+# Keystore (⚠️ muy importante: nunca subirlo)
+*.keystore
+*.jks
+
+# Android Studio
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# APK / AAB / outputs
+*.apk
+*.ap_ 
+*.aab
+outputs/
+
+# Misc
+gen/
+bin/
+node_modules
