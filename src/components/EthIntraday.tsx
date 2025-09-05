@@ -11,9 +11,10 @@ export type WindowAnalysis = {
 
 export type EthAnalysis = {
   last: number;
-  short: WindowAnalysis; // 5m, 3h
-  day: WindowAnalysis; // 1h, 24h
-  ts: number; // timestamp cálculo
+  short: WindowAnalysis; // 5m
+  day: WindowAnalysis; // 1h
+  long: WindowAnalysis; // 1d
+  ts: number;
 };
 
 function sparkPath(values: number[], w = 260, h = 64, padX = 6, padY = 6) {
