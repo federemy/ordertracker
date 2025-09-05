@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
-import EthTrend from "../components/EthTrend";
 
 /* ===== Types ===== */
 type Order = {
@@ -1048,7 +1047,6 @@ export default function Home() {
 
         {/* ===== Veredicto ETH ===== */}
         <EthVerdict data={ethAnalysis} />
-        <EthTrend />
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
 
         {/* ===== Debug notificaciones ===== */}
