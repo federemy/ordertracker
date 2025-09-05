@@ -18,7 +18,7 @@ function money(n: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(n);
 }
 
@@ -145,7 +145,7 @@ export default function EthVerdict({
         <div className="text-lg font-semibold">ETH — Veredicto</div>
         <div className="flex items-center gap-2">
           <span
-            className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${cls}`}
+            className={`px-2 py-0.5 rounded-full text-xs font-semibold border text-center ${cls}`}
           >
             {v.confidence}% confianza · {labelConf(v.confidence)}
           </span>

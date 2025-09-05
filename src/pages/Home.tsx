@@ -24,7 +24,7 @@ const LS_PRICES = "simple_prices_v1";
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
-  maximumFractionDigits: 2,
+  maximumFractionDigits: 0,
 });
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const dateStr = (ms: number) => new Date(ms).toLocaleString();
@@ -1052,7 +1052,12 @@ export default function Home() {
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
 
         {/* ===== Debug notificaciones ===== */}
-        <section className="p-3 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-2">
+        <section
+          className="p-3 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-2"
+          style={{
+            order: 35,
+          }}
+        >
           <div className="text-sm font-semibold">
             Debug de notificaciones (solo vos lo ves)
           </div>

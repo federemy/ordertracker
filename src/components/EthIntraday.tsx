@@ -78,6 +78,8 @@ export default function EthIntraday({
   const money = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
   const colorPct = (v: number) =>
     v > 0 ? "text-emerald-400" : v < 0 ? "text-rose-400" : "text-neutral-300";
@@ -120,11 +122,11 @@ export default function EthIntraday({
           </Metric>
           <Metric title="Medias">
             <span className="text-neutral-300">
-              {w.smaFast != null ? `SMA(f): ${w.smaFast.toFixed(2)}` : "—"}
+              {w.smaFast != null ? `SMA(f): ${w.smaFast.toFixed(0)}` : "—"}
             </span>
             <span className="text-neutral-500 mx-1">/</span>
             <span className="text-neutral-300">
-              {w.smaSlow != null ? `SMA(l): ${w.smaSlow.toFixed(2)}` : "—"}
+              {w.smaSlow != null ? `SMA(l): ${w.smaSlow.toFixed(0)}` : "—"}
             </span>
           </Metric>
           <Metric title="Sesgo">
