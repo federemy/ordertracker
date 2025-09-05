@@ -1,5 +1,5 @@
 // src/components/EthVerdict.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import type { EthAnalysis } from "./EthIntraday";
 
 type VerdictDir = "sube" | "baja" | "lateral";

@@ -386,8 +386,10 @@ export default function Home() {
             last,
             short: shortWindow,
             day: dayWindow,
+            long: dayWindow, // temporal hasta calcular 1d real
             ts: Date.now(),
           });
+
           ethAnalysisLoadedRef.current = true; // marcar sólo si salió bien
         } catch (e: any) {
           console.error("ETH intraday error:", e?.message || e);

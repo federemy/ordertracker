@@ -1,19 +1,19 @@
 export type WindowAnalysis = {
   closes: number[];
-  pct: number; // % vs primer close de la ventana
+  pct: number;
   min: number;
   max: number;
-  smaFast?: number | null;
-  smaSlow?: number | null;
+  smaFast: number | null;
+  smaSlow: number | null;
   bias: "Alcista" | "Bajista" | "Lateral" | "Indefinido";
-  label: string; // "Corto plazo (5m · 3h)" / "1 día (1h · 24h)"
+  label: string;
 };
 
 export type EthAnalysis = {
   last: number;
   short: WindowAnalysis; // 5m
-  day: WindowAnalysis; // 1h
-  long: WindowAnalysis; // 1d
+  day: WindowAnalysis; // 1h (24h)
+  long?: WindowAnalysis; // ← OPCIONAL por ahora
   ts: number;
 };
 
