@@ -40,3 +40,6 @@ outputs/
 gen/
 bin/
 node_modules
+
+# Local Netlify folder
+.netlify

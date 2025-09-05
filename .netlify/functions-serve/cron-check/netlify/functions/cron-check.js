@@ -683,21 +683,67 @@ var getStore = (input) => {
   );
 };
 
+// netlify/functions/_store.ts
+var import_fs = require("fs");
+var import_path = __toESM(require("path"), 1);
+var IS_FN = !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.DEPLOY_URL || !!process.env.CONTEXT || !!process.env.NETLIFY;
+function makeStore(name) {
+  const siteID = process.env.NETLIFY_BLOBS_SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN;
+  if (!siteID || !token) return getStore({ name });
+  return getStore({ name, siteID, token });
+}
+function devFile(name, key) {
+  const base = import_path.default.resolve(process.cwd(), ".netlify", "blob-dev", name);
+  const file = import_path.default.join(base, `${key}.json`);
+  return { base, file };
+}
+async function ensureDir(dir) {
+  await import_fs.promises.mkdir(dir, { recursive: true }).catch(() => {
+  });
+}
+async function getList(name, key) {
+  if (IS_FN) {
+    const store = makeStore(name);
+    return await store.get(key, { type: "json" });
+  } else {
+    const { base, file } = devFile(name, key);
+    try {
+      await ensureDir(base);
+      const raw = await import_fs.promises.readFile(file, "utf8");
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+}
+async function setList(name, key, value) {
+  if (IS_FN) {
+    const store = makeStore(name);
+    await store.set(key, JSON.stringify(value));
+  } else {
+    const { base, file } = devFile(name, key);
+    await ensureDir(base);
+    await import_fs.promises.writeFile(file, JSON.stringify(value, null, 2), "utf8");
+  }
+}
+
 // netlify/functions/cron-check.ts
-var ORDERS_BUCKET = "orders";
-var ORDERS_KEY = "orders.json";
-var SUBS_BUCKET = "subs";
-var SUBS_KEY = "subs.json";
-var STATE_BUCKET = "state";
-var SIGNS_KEY = "signs.json";
+var STORE_ORDERS = "orders";
+var KEY_ORDERS = "list";
+var STORE_SUBS = "subs";
+var KEY_SUBS = "list";
+var STORE_STATE = "state";
+var KEY_SIGNS = "signs";
 var FEE_RATE_SPOT = 15e-4;
 var VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 var VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 var SUBJECT = "mailto:you@example.com";
 if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
   console.warn("VAPID keys missing in environment variables");
+} else {
+  import_web_push.default.setVapidDetails(SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
-import_web_push.default.setVapidDetails(SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 var binancePrice = async (asset) => {
   const symbol = `${asset.toUpperCase()}USDT`;
   try {
@@ -729,18 +775,9 @@ function deltaNetCloseNow(o, current) {
     return proceedsAfterSell - cost;
   }
 }
-async function loadJSON(bucket, key, fallback) {
-  const store = getStore(bucket);
-  const data = await store.get(key, { type: "json" });
-  return data ?? fallback;
-}
-async function saveJSON(bucket, key, data) {
-  const store = getStore(bucket);
-  await store.set(key, JSON.stringify(data));
-}
 var handler = async () => {
   try {
-    const orders = await loadJSON(ORDERS_BUCKET, ORDERS_KEY, []);
+    const orders = await getList(STORE_ORDERS, KEY_ORDERS) || [];
     if (!Array.isArray(orders) || orders.length === 0) {
       return {
         statusCode: 200,
@@ -763,14 +800,14 @@ var handler = async () => {
         body: JSON.stringify({ ok: true, note: "No prices" })
       };
     }
-    const subs = await loadJSON(SUBS_BUCKET, SUBS_KEY, []);
+    const subs = await getList(STORE_SUBS, KEY_SUBS) || [];
     if (!Array.isArray(subs) || subs.length === 0) {
       return {
         statusCode: 200,
         body: JSON.stringify({ ok: true, note: "No subscribers" })
       };
     }
-    const prevSigns = await loadJSON(STATE_BUCKET, SIGNS_KEY, {});
+    const prevSigns = await getList(STORE_STATE, KEY_SIGNS) || {};
     const nextSigns = { ...prevSigns };
     const stillValidSubs = [];
     const sendToAll = async (payload) => {
@@ -799,16 +836,16 @@ var handler = async () => {
       if (prev <= 0 && sign > 0) {
         const title = `\u2705 Ganancia neta en ${o.asset}`;
         const body = `${net >= 0 ? "+" : ""}${net.toFixed(2)} USD \xB7 ${o.side ?? "SELL"} ${o.qty} @ ${o.price} \u2192 ${curr.toFixed(2)}`;
-        await sendToAll({ title, body });
+        await sendToAll({ title, body, url: "/" });
         pushes++;
       }
       nextSigns[o.id] = sign;
     }
     await Promise.all([
-      saveJSON(STATE_BUCKET, SIGNS_KEY, nextSigns),
-      saveJSON(
-        SUBS_BUCKET,
-        SUBS_KEY,
+      setList(STORE_STATE, KEY_SIGNS, nextSigns),
+      setList(
+        STORE_SUBS,
+        KEY_SUBS,
         stillValidSubs.length ? stillValidSubs : subs
       )
     ]);
