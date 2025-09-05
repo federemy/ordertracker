@@ -1,6 +1,10 @@
-// src/pages/Home.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+
+import EthIntraday from "../components/EthIntraday";
+import type { EthAnalysis } from "../components/EthIntraday";
+import EthVerdict from "../components/EthVerdict";
+import EthTrend from "../components/EthTrend";
 
 /* ===== Types ===== */
 type Order = {
@@ -9,9 +13,8 @@ type Order = {
   asset: string;
   qty: number;
   price: number;
-  side?: "BUY" | "SELL"; // compat: si falta, es SELL
+  side?: "BUY" | "SELL";
 };
-
 type PriceMap = Record<string, number>;
 
 /* ===== Storage keys ===== */
@@ -171,6 +174,8 @@ export async function enablePush() {
 
 export default function Home() {
   /* ===== State ===== */
+  const ethAnalysisLoadedRef = useRef(false);
+
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(LS_ORDERS) || "[]");
@@ -185,6 +190,10 @@ export default function Home() {
       return {};
     }
   });
+
+  const [ethAnalysis, setEthAnalysis] = useState<EthAnalysis | null>(null);
+  const [ethLoading, setEthLoading] = useState(false);
+  const [ethError, setEthError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     asset: "ETH",
@@ -261,31 +270,132 @@ export default function Home() {
     const pairs = toBinancePairs(symbols);
     if (!pairs.length) return;
     setLoading(true);
+
     const pairToSym: Record<string, string> = {};
     Object.entries(BINANCE_SYMBOLS).forEach(([sym, pair]) => {
       pairToSym[pair] = sym;
     });
+
     const updates: PriceMap = {};
-    for (const pair of pairs) {
-      try {
-        const res = await fetch(
-          `https://api.binance.com/api/v3/ticker/price?symbol=${pair}`
-        );
-        if (!res.ok) throw new Error(String(res.status));
-        const data: any = await res.json();
-        const price = Number(data?.price);
-        const sym = pairToSym[pair];
-        if (sym && Number.isFinite(price)) updates[sym] = price;
-      } catch (e) {
-        console.error("fetchPricesBatch error for", pair, e);
-        pushToast(`No pude traer ${pair}`, "error");
+    try {
+      // === 1) Precios spot simples (como ya hacías)
+      await Promise.all(
+        pairs.map(async (pair) => {
+          const res = await fetch(
+            `https://api.binance.com/api/v3/ticker/price?symbol=${pair}`
+          );
+          if (!res.ok) throw new Error(String(res.status));
+          const data: any = await res.json();
+          const price = Number(data?.price);
+          const sym = pairToSym[pair];
+          if (sym && Number.isFinite(price)) updates[sym] = price;
+        })
+      );
+
+      if (Object.keys(updates).length) {
+        setPrices((prev) => ({ ...prev, ...updates }));
+        setLastUpdated(Date.now());
       }
+
+      // === 2) Si ETH está en símbolos trackeados → análisis intradiario
+      if (
+        symbols.map((s) => s.toUpperCase()).includes("ETH") &&
+        !ethAnalysisLoadedRef.current
+      ) {
+        setEthLoading(true);
+        setEthError(null);
+
+        // Velas: 5m (36 = ~3h) y 1h (24 = 1 día)
+        const [raw5m, raw1h] = await Promise.all([
+          fetch(
+            "https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=5m&limit=36",
+            { headers: { "cache-control": "no-cache" } }
+          ).then((r) => (r.ok ? r.json() : Promise.reject(r.status))),
+          fetch(
+            "https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1h&limit=24",
+            { headers: { "cache-control": "no-cache" } }
+          ).then((r) => (r.ok ? r.json() : Promise.reject(r.status))),
+        ]);
+
+        const closes5m = (raw5m as any[])
+          .map((k) => Number(k[4]))
+          .filter(Number.isFinite);
+        const closes1h = (raw1h as any[])
+          .map((k) => Number(k[4]))
+          .filter(Number.isFinite);
+
+        const last =
+          updates.ETH ??
+          prices.ETH ??
+          (closes5m.at(-1) || closes1h.at(-1) || 0);
+
+        const pct = (arr: number[]) => {
+          const a0 = arr[0] || 0;
+          const an = arr.at(-1) || 0;
+          return a0 ? ((an - a0) / a0) * 100 : 0;
+        };
+        const sma = (arr: number[], n: number) => {
+          if (arr.length < n) return null;
+          const s = arr.slice(-n).reduce((a, b) => a + b, 0);
+          return s / n;
+        };
+        const bias = (
+          fast: number | null,
+          slow: number | null,
+          thr = 0.002
+        ) => {
+          if (fast == null || slow == null || slow === 0)
+            return "Indefinido" as const;
+          const gap = (fast - slow) / slow;
+          if (gap > thr) return "Alcista";
+          if (gap < -thr) return "Bajista";
+          return "Lateral";
+        };
+
+        // Corto plazo: SMA(3) vs SMA(12) sobre 5m
+        const smaFast5 = sma(closes5m, 3);
+        const smaSlow5 = sma(closes5m, 12);
+        const shortWindow = {
+          closes: closes5m,
+          pct: pct(closes5m),
+          min: Math.min(...closes5m),
+          max: Math.max(...closes5m),
+          smaFast: smaFast5,
+          smaSlow: smaSlow5,
+          bias: bias(smaFast5, smaSlow5, 0.002), // 0.2% de umbral
+          label: "Corto plazo (5m · ~3h)",
+        } as const;
+
+        // 1 día: SMA(6) vs SMA(24) sobre 1h
+        const smaFast1h = sma(closes1h, 6);
+        const smaSlow1h = sma(closes1h, 24);
+        const dayWindow = {
+          closes: closes1h,
+          pct: pct(closes1h),
+          min: Math.min(...closes1h),
+          max: Math.max(...closes1h),
+          smaFast: smaFast1h,
+          smaSlow: smaSlow1h,
+          bias: bias(smaFast1h, smaSlow1h, 0.004), // 0.4% de umbral
+          label: "1 día (1h · 24h)",
+        } as const;
+
+        setEthAnalysis({
+          last,
+          short: shortWindow,
+          day: dayWindow,
+          ts: Date.now(),
+        });
+      }
+    } catch (e: any) {
+      console.error("fetchPricesBatch error", e);
+      pushToast("No pude actualizar precios/ETH", "error");
+      setEthError(typeof e === "string" ? e : "Falla de red/APIs");
+    } finally {
+      setEthLoading(false);
+      setLoading(false);
     }
-    if (Object.keys(updates).length) {
-      setPrices((prev) => ({ ...prev, ...updates }));
-      setLastUpdated(Date.now());
-    }
-    setLoading(false);
+    ethAnalysisLoadedRef.current = true;
   };
 
   const trackedSymbols = useMemo(() => {
@@ -927,6 +1037,11 @@ export default function Home() {
             </tbody>
           </table>
         </section>
+
+        {/* ===== Veredicto ETH ===== */}
+        <EthVerdict data={ethAnalysis} />
+        <EthTrend />
+        <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
 
         {/* ===== Debug notificaciones ===== */}
         <section className="p-3 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-2">

@@ -128,7 +128,7 @@ export default function Analisis() {
       <nav className="navbar navbar-expand-lg">
         <div className="container-fluid">
           <a className="navbar-brand text-light fw-semibold" href="/">
-            🤖 CriptoBot Pro
+            🤖 CriptOrder
           </a>
 
           <div className="ms-auto d-flex gap-2">
