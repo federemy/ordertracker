@@ -5,6 +5,8 @@ import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
 import ConsoleViewer from "../components/ConsoleViewer";
+import PushControls from "../components/PushControls";
+
 /* ===== Types ===== */
 type Order = {
   id: string;
@@ -1164,6 +1166,7 @@ export default function Home() {
         </section>
       </div>{" "}
       <ConsoleViewer max={300} />
+      <PushControls />
     </div>
   );
 }
