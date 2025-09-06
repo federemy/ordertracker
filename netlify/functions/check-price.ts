@@ -1,6 +1,16 @@
 import type { Handler } from "@netlify/functions";
 import webpush from "web-push";
 
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY!;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
+const SUBJECT = process.env.CONTACT_EMAIL || "mailto:you@example.com";
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn("[check-price] Missing VAPID keys");
+}
+
 type Order = {
   id: string;
   ts: number;

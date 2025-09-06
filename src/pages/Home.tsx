@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
-
+import ConsoleViewer from "../components/ConsoleViewer";
 /* ===== Types ===== */
 type Order = {
   id: string;
@@ -1162,7 +1162,8 @@ export default function Home() {
             </Link>
           </div>
         </section>
-      </div>
+      </div>{" "}
+      <ConsoleViewer max={300} />
     </div>
   );
 }
