@@ -20,13 +20,16 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
             if (typeof v === "string") return v;
             return JSON.stringify(
               v,
-              (k, val) => {
-                if (val instanceof Error)
+              (_k, val) => {
+                // marcar _k como leído para evitar TS6133
+                void _k;
+                if (val instanceof Error) {
                   return {
                     name: val.name,
                     message: val.message,
                     stack: val.stack,
                   };
+                }
                 return val;
               },
               2
@@ -81,7 +84,6 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
     push("INFO", ["ConsoleViewer listo ✅"]);
 
     return () => {
-      // restaurar (opcional: podés dejarlo hookeado)
       console.log = orig.log;
       console.info = orig.info;
       console.warn = orig.warn;
@@ -110,48 +112,13 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        left: 8,
-        right: 8,
-        bottom: 8,
-        maxHeight: "40vh",
-        zIndex: 99999,
-        background: "#0b0b0b",
-        color: "#eaeaea",
-        border: "1px solid #333",
-        borderRadius: 10,
-        display: "flex",
-        flexDirection: "column",
-        font: "12px ui-monospace,Menlo,Consolas,monospace",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "6px 8px",
-          borderBottom: "1px solid #222",
-        }}
-      >
+    <div style={wrap}>
+      <div style={header}>
         <strong>📟 Console Live</strong>
-        <span
-          style={{
-            marginLeft: 8,
-            padding: "2px 8px",
-            borderRadius: 999,
-            border: "1px solid #444",
-            color: "#bbb",
-          }}
-        >
-          {entries.length}
-        </span>
+        <span style={pill}>{entries.length}</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <button onClick={() => setHidden((v) => !v)} style={btn}>
-            {" "}
-            {hidden ? "Mostrar" : "Ocultar"}{" "}
+            {hidden ? "Mostrar" : "Ocultar"}
           </button>
           <button onClick={copy} style={btn}>
             Copiar
@@ -162,17 +129,7 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
         </div>
       </div>
       {!hidden && (
-        <pre
-          ref={preRef}
-          style={{
-            margin: 0,
-            padding: 8,
-            overflow: "auto",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            flex: 1,
-          }}
-        >
+        <pre ref={preRef} style={pre}>
           {entries.map((e, i) => (
             <div key={i}>
               <b style={{ color: colorFor(e.level) }}>
@@ -187,12 +144,49 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
   );
 }
 
+const wrap: React.CSSProperties = {
+  position: "fixed",
+  left: 8,
+  right: 8,
+  bottom: 8,
+  maxHeight: "40vh",
+  zIndex: 99999,
+  background: "#0b0b0b",
+  color: "#eaeaea",
+  border: "1px solid #333",
+  borderRadius: 10,
+  display: "flex",
+  flexDirection: "column",
+  font: "12px ui-monospace,Menlo,Consolas,monospace",
+};
+const header: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "6px 8px",
+  borderBottom: "1px solid #222",
+};
+const pill: React.CSSProperties = {
+  marginLeft: 8,
+  padding: "2px 8px",
+  borderRadius: 999,
+  border: "1px solid #444",
+  color: "#bbb",
+};
 const btn: React.CSSProperties = {
   background: "#161616",
   color: "#ddd",
   border: "1px solid #333",
   borderRadius: 8,
   padding: "4px 8px",
+};
+const pre: React.CSSProperties = {
+  margin: 0,
+  padding: 8,
+  overflow: "auto",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  flex: 1,
 };
 
 function colorFor(level: Entry["level"]) {
