@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
 
@@ -28,14 +28,12 @@ export default function PushControls() {
   }, []);
 
   useEffect(() => {
-    // Logs desde el Service Worker (push recibido, click, etc.)
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", (e) => {
         console.log("[SW message]", e.data);
       });
     }
     (async () => {
-      // aseguramos registro del SW
       const reg = await navigator.serviceWorker.register("/sw.js", {
         scope: "/",
       });
@@ -49,16 +47,11 @@ export default function PushControls() {
       console.log("--- ENABLE: pedir permiso ---");
       const perm = await Notification.requestPermission();
       console.log("Notification.permission →", perm);
-      if (perm !== "granted") {
-        console.warn("permiso no concedido");
-        return;
-      }
+      if (perm !== "granted") return console.warn("permiso no concedido");
 
-      if (!VAPID_PUBLIC) {
+      if (!VAPID_PUBLIC)
         console.warn("VAPID_PUBLIC vacío (VITE_VAPID_PUBLIC_KEY)");
-      } else {
-        console.log("VAPID_PUBLIC length:", VAPID_PUBLIC.length);
-      }
+      else console.log("VAPID_PUBLIC length:", VAPID_PUBLIC.length);
 
       console.log("--- ENABLE: subscribe() ---");
       const reg = await navigator.serviceWorker.ready;

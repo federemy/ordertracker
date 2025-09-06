@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 type Entry = {
   ts: string;
@@ -21,15 +21,13 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
             return JSON.stringify(
               v,
               (_k, val) => {
-                // marcar _k como leído para evitar TS6133
-                void _k;
-                if (val instanceof Error) {
+                void _k; // evitar TS6133
+                if (val instanceof Error)
                   return {
                     name: val.name,
                     message: val.message,
                     stack: val.stack,
                   };
-                }
                 return val;
               },
               2
@@ -144,7 +142,7 @@ export default function ConsoleViewer({ max = 300 }: { max?: number }) {
   );
 }
 
-const wrap: React.CSSProperties = {
+const wrap: CSSProperties = {
   position: "fixed",
   left: 8,
   right: 8,
@@ -159,28 +157,28 @@ const wrap: React.CSSProperties = {
   flexDirection: "column",
   font: "12px ui-monospace,Menlo,Consolas,monospace",
 };
-const header: React.CSSProperties = {
+const header: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
   padding: "6px 8px",
   borderBottom: "1px solid #222",
 };
-const pill: React.CSSProperties = {
+const pill: CSSProperties = {
   marginLeft: 8,
   padding: "2px 8px",
   borderRadius: 999,
   border: "1px solid #444",
   color: "#bbb",
 };
-const btn: React.CSSProperties = {
+const btn: CSSProperties = {
   background: "#161616",
   color: "#ddd",
   border: "1px solid #333",
   borderRadius: 8,
   padding: "4px 8px",
 };
-const pre: React.CSSProperties = {
+const pre: CSSProperties = {
   margin: 0,
   padding: 8,
   overflow: "auto",
