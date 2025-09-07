@@ -276,4 +276,4 @@ export const handler: Handler = async (event) => {
 };
 
 // ⏰ cada 30 minutos (UTC)
-export const config = { schedule: "*/1 * * * *" };
+export const config = { schedule: "* * * * *" };
