@@ -1,6 +1,5 @@
 import { Handler } from "@netlify/functions";
-import { getStore } from "@netlify/blobs";
-
+import { getBlobStore, getList, setList } from "./_store";
 export const handler: Handler = async () => {
   try {
     const store = getStore({ name: "subs" });

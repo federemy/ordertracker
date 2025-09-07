@@ -1,14 +1,10 @@
-// netlify/functions/_store.ts
 import { getStore as _getStore } from "@netlify/blobs";
 
-// Usa env si el runtime no tiene Blobs “auto-config”
 export function getBlobStore(name: string) {
   const siteID = process.env.NETLIFY_BLOBS_SITE_ID;
   const token = process.env.NETLIFY_BLOBS_TOKEN;
-  // modo manual
-  if (siteID && token) return _getStore({ name, siteID, token });
-  // modo Netlify (auto)
-  return _getStore(name);
+  if (siteID && token) return _getStore({ name, siteID, token }); // modo manual
+  return _getStore(name); // modo auto en Netlify
 }
 
 export async function getList<T = unknown>(

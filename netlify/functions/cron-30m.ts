@@ -1,8 +1,7 @@
 // netlify/functions/cron-30m.ts
 import type { Handler } from "@netlify/functions";
 import webpush from "web-push";
-import { getStore } from "@netlify/blobs";
-import { getList, setList } from "./_store";
+import { getBlobStore, getList, setList } from "./_store";
 
 // ===== Tipos =====
 type Sub = { endpoint: string; keys?: { p256dh?: string; auth?: string } };
@@ -93,8 +92,8 @@ async function loadPosition(): Promise<{
   qty: number;
   avgPrice: number;
 } | null> {
-  const oStore = getStore("orders");
-  const orders = (await oStore.get("list", { type: "json" })) as Order[] | null;
+  const orders = (await getList<Order[]>("orders", "list")) || null;
+
   if (orders?.length) {
     let qty = 0,
       cost = 0;
@@ -115,9 +114,11 @@ async function loadPosition(): Promise<{
     }
     if (qty > 0) return { qty, avgPrice: cost / qty };
   }
-  const pf = (await getStore("portfolio").get("eth", {
-    type: "json",
-  })) as PositionFallback | null;
+  const pf = await getList<{ qty: number; avgPrice: number }>(
+    "portfolio",
+    "eth"
+  );
+
   if (pf && Number.isFinite(pf.qty) && Number.isFinite(pf.avgPrice))
     return { qty: pf.qty, avgPrice: pf.avgPrice };
   return null;
@@ -136,7 +137,7 @@ async function loadSubs(): Promise<LoadedSubs> {
   if (fromList.length) return { source: "list", subs: fromList };
 
   // 2) blobs por endpoint: namespace "subs" (un blob por endpoint)
-  const store = getStore("subs");
+  const store = getBlobStore("subs");
   const { blobs } = await store.list();
   const arr: { key: string; sub: Sub }[] = [];
   for (const b of blobs) {
@@ -181,7 +182,7 @@ async function sendAndClean(loaded: LoadedSubs, payload: string) {
   }
 
   if (loaded.source === "blobs") {
-    const store = getStore("subs");
+    const store = getBlobStore("subs");
     await Promise.allSettled(
       loaded.subs.map(async ({ key, sub }) => {
         try {
