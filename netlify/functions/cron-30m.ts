@@ -230,7 +230,7 @@ export const handler: Handler = async (event) => {
       body,
       url: "/",
       tag: "eth-30m",
-      renotify: false,
+      renotify: true,
     });
 
     const loaded = await loadSubs();
