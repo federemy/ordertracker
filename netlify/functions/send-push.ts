@@ -5,7 +5,7 @@ import { getList } from "./_store"; // usa tu _store actual (o el de Opción B)
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
-const SUBJECT = "mailto:you@example.com";
+const SUBJECT = process.env.CONTACT_EMAIL || "mailto:you@example.com";
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webPush.setVapidDetails(SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -22,7 +22,7 @@ type Body = {
   subscription?: Sub; // 👈 hotfix: enviar directo a esta sub
 };
 
-export const handler: Handler = async (event) => {
+const handler: Handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return { statusCode: 405, body: "Method Not Allowed" };
@@ -88,3 +88,5 @@ export const handler: Handler = async (event) => {
     };
   }
 };
+
+export default handler;
