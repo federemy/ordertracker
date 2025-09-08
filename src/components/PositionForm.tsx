@@ -6,10 +6,12 @@ export default function PositionForm() {
   const [avg, setAvg] = useState<string>("");
 
   const save = async () => {
+    const q = parseFloat((qty || "").replace(",", "."));
+    const a = parseFloat((avg || "").replace(",", "."));
     const r = await fetch("/.netlify/functions/save-position", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qty: Number(qty), avgPrice: Number(avg) }),
+      body: JSON.stringify({ qty: q, avgPrice: a }),
     });
     alert(await r.text());
   };
