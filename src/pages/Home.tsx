@@ -295,6 +295,7 @@ export default function Home() {
       price: priceNum,
       side: form.side,
     };
+    postPrimaryToSW(o);
     setOrders((prev) => [o, ...prev]);
     setForm((f) => ({ ...f, qty: "", price: "" }));
   };
@@ -307,6 +308,7 @@ export default function Home() {
     setPrices({});
     setLastUpdated(null);
     pushToast("Almacenamiento local borrado", "info");
+    postPrimaryToSW(null);
   };
   const removeOrder = (id: string) =>
     setOrders((prev) => prev.filter((o) => o.id !== id));
@@ -796,7 +798,6 @@ export default function Home() {
               Borrar local
             </button>
 
-            <div className="grow" />
             {lastUpdated && (
               <span className="text-sm text-neutral-400">
                 Última: {new Date(lastUpdated).toLocaleTimeString()}
