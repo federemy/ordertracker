@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
-import ConsoleViewer from "../components/ConsoleViewer";
 import PushControls from "../components/PushControls";
 
 /* ===== Types ===== */
@@ -585,25 +584,6 @@ export default function Home() {
     document.title = `${light} Neto: ${money.format(totalNetNow)}${pctStr}`;
   }, [totalNetNow, totalPctNow]);
 
-  async function testPushBackend() {
-    if (!pushSub) {
-      alert("No hay suscripción push (aceptá permisos primero)");
-      return;
-    }
-    const res = await fetch("/.netlify/functions/send-push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: "🔔 Test directo",
-        body: "Llega incluso con la app cerrada",
-        url: "/",
-        subscription: pushSub,
-      }),
-    });
-    const j = await res.json().catch(() => ({}));
-    alert(`send-push → ${res.status} ${JSON.stringify(j)}`);
-  }
-
   const first = orders[0];
   const firstCurrent = first ? prices[first.asset] || 0 : 0;
   const firstBruto = first ? diffVsActual(first, firstCurrent) : 0;
@@ -1053,119 +1033,13 @@ export default function Home() {
         <EthVerdict data={ethAnalysis} />
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
 
-        {/* ===== Debug notificaciones ===== */}
-        <section
-          className="p-3 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-2"
-          style={{
-            order: 35,
-          }}
+        <Link
+          to="/analisis"
+          className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white"
         >
-          <div className="text-sm font-semibold">
-            Debug de notificaciones (solo vos lo ves)
-          </div>
-          <div className="flex gap-2 flex-wrap text-sm align-items-center">
-            <button
-              onClick={async () => {
-                alert(`Permiso: ${Notification.permission}`);
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
-            >
-              Ver permiso
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!("serviceWorker" in navigator)) return alert("No SW");
-                const reg = await navigator.serviceWorker.getRegistration();
-                if (!reg) return alert("SW no registrado");
-                const sub = await reg.pushManager.getSubscription();
-                if (!sub) return alert("Sin suscripción");
-                setPushSub(sub);
-                alert(`Sub OK: ${sub.endpoint.slice(0, 38)}...`);
-                console.log("SUBSCRIPTION JSON >>>", JSON.stringify(sub));
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
-            >
-              Ver suscripción
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!("serviceWorker" in navigator)) return alert("No SW");
-                const reg = await navigator.serviceWorker.ready;
-                await reg.showNotification("🔔 Test local", {
-                  body: "SW activo ✅",
-                });
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
-            >
-              Test local (sin backend)
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!("serviceWorker" in navigator)) return alert("No SW");
-                const reg = await navigator.serviceWorker.ready;
-                const sub = await reg.pushManager.getSubscription();
-                if (sub) await sub.unsubscribe();
-                const key = VAPID_PUBLIC_KEY as string;
-                const newSub = await reg.pushManager.subscribe({
-                  userVisibleOnly: true,
-                  applicationServerKey: base64urlToUint8Array(key),
-                });
-                await fetch(`${API_BASE}/save-subscription`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(newSub),
-                });
-                setPushSub(newSub);
-                alert("Resuscripto ✅");
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20"
-            >
-              Re-suscribir
-            </button>
-
-            <button
-              onClick={enablePush}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
-            >
-              🔔 Activar notificaciones
-            </button>
-
-            <button
-              onClick={async () => {
-                await testPushBackend();
-              }}
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm"
-            >
-              Probar notificación
-            </button>
-
-            <button
-              onClick={async () => {
-                const reg = await navigator.serviceWorker.ready;
-                const sub = await reg.pushManager.getSubscription();
-                if (!sub) return alert("❌ Sin suscripción todavía");
-                const txt = JSON.stringify(sub);
-                await navigator.clipboard.writeText(txt).catch(() => {});
-                alert("✅ Suscripción copiada al portapapeles");
-              }}
-            >
-              Copiar suscripción
-            </button>
-
-            {/* ANTES: <a href="/analisis/"> — AHORA: Link SPA */}
-            <Link
-              to="/analisis"
-              className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white"
-            >
-              Ir a Análisis
-            </Link>
-          </div>
-        </section>
+          Ir a Análisis
+        </Link>
       </div>{" "}
-      <ConsoleViewer max={300} />
       <PushControls />
     </div>
   );

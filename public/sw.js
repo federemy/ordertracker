@@ -4,11 +4,11 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Noti";
   const options = {
     body: data.body || "",
-    icon: "/icon-192.png",
-    badge: "/badge-72.png",
+    icon: data.icon || "/icons/app-192.png",
+    badge: data.badge || "/icons/badge-72.png",
     data: { url: data.url || "/" },
     tag: data.tag || "push",
-    renotify: !!data.renotify
+    renotify: !!data.renotify,
   };
   event.waitUntil(
     (async () => {

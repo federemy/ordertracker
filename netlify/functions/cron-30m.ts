@@ -13,11 +13,14 @@ type Order = {
 };
 type PositionFallback = { qty: number; avgPrice: number };
 
-// ===== ENV / VAPID =====
+// ===== ENV / VAPID / ICONOS =====
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
 const SUBJECT = process.env.CONTACT_EMAIL || "mailto:you@example.com";
 const BINANCE_SYMBOL = process.env.BINANCE_SYMBOL || "ETHUSDT"; // último fallback
+// Iconos (personalizables). Poné tus archivos en /public/icons/ o seteá las envs:
+const ICON_URL = process.env.PUSH_ICON_URL || "/icons/app-192.png";
+const BADGE_URL = process.env.PUSH_BADGE_URL || "/icons/badge-72.png";
 
 function assertEnv() {
   const missing: string[] = [];
@@ -34,6 +37,8 @@ const fmt = (n: number, d = 2) =>
     minimumFractionDigits: d,
     maximumFractionDigits: d,
   }).format(n);
+const fmtSigned = (n: number, d = 2) =>
+  (n >= 0 ? "+" : "−") + fmt(Math.abs(n), d);
 
 // ---- proveedores de precio (fallbacks) ----
 async function fromCoinbase() {
@@ -201,7 +206,6 @@ async function sendAndClean(loaded: LoadedSubs, payload: string) {
 export default async function handler(req: Request): Promise<Response> {
   try {
     assertEnv();
-    // debug=? via URL (cuando lo invocás manual)
     let debug = false;
     try {
       const url = new URL(req.url);
@@ -214,21 +218,22 @@ export default async function handler(req: Request): Promise<Response> {
     const avg = position?.avgPrice ?? 0;
     const pnl = qty ? (price - avg) * qty : 0;
 
-    const title = qty
-      ? `ETH $${fmt(price)} | Δ $${fmt(pnl)}`
-      : `ETH $${fmt(price)}`;
+    // 👉 Lo que pediste: "a cuánto está" y "diferencia neta vs mi orden"
+    const title = `ETH $${fmt(price)}`;
     const body = qty
-      ? `Qty: ${fmt(qty, 6)} · Avg: $${fmt(avg)} · PnL: $${fmt(pnl)}`
+      ? `Δ neta: $${fmtSigned(pnl)} · Qty: ${fmt(qty, 6)} · Orden: $${fmt(avg)}`
       : debug
       ? "Test manual cron-1m ✅"
-      : "Actualización cada 1 min ✅";
+      : "Guardá tu orden para ver Δ neta";
 
     const payload = JSON.stringify({
       title,
       body,
       url: "/",
-      tag: "eth-1m",
-      renotify: true,
+      tag: "eth-1m", // en prod: "eth-30m"
+      renotify: true, // en prod: false si no querés sonido cada vez
+      icon: ICON_URL, // ← icono “lindo” (tu app)
+      badge: BADGE_URL, // ← badge pequeño monocromo
     });
 
     const loaded = await loadSubs();
