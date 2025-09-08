@@ -121,10 +121,11 @@ export default function PushControls() {
         title: "Test a este dispositivo",
         body: "Hola 👋",
         url: "/",
-        subscription: s, // << envío directo sin depender de Blobs
+        subscription: s,
       }),
     });
-    alert(r.ok ? "Enviado ✅" : "Error enviando");
+    const txt = await r.text(); // ⬅️ leemos el cuerpo para ver el motivo
+    alert((r.ok ? "Enviado ✅\n" : "Error enviando ❌\n") + txt);
   };
 
   const removeOtherEndpoints = async () => {
