@@ -1,6 +1,7 @@
 // sw.js
-const BADGE = "/icons/badge-72.png";
-const ICON = "/icons/app-192.png";
+const BADGE = "/icons/badge-72.png";        // blanco, transparente
+const SMALL_ICON = "/icons/badge-white-72.png";   // mismo glyph por compat
+const LARGE_ICON = "/icons/icon-192.png"; // color, grande
 const STATE_CACHE = "app-state-v1";
 const STATE_KEY = "/__primary-order";
 
@@ -52,6 +53,14 @@ function pctVsEntry(o, current) {
 const money = (n) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n);
 
+self.addEventListener("install", (e) => {
+  e.waitUntil(
+    caches.open("notif-assets-v1").then((c) =>
+      c.addAll([BADGE, SMALL_ICON, LARGE_ICON].map((u) => new Request(u, { cache: "reload" })))
+    )
+  );
+});
+
 // --- push: SIEMPRE lee la orden desde cache (fuente de verdad) ---
 self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
@@ -77,8 +86,9 @@ self.addEventListener("push", (event) => {
 
     return self.registration.showNotification(title, {
       body,
-      icon: data.icon || ICON,
+      icon: data.icon || SMALL_ICON,
       badge: data.badge || BADGE,
+      image: LARGE_ICON,
       data: { url: data.url || "/" },
       tag: data.tag || "eth-30m",
       renotify: false

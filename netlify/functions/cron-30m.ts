@@ -268,4 +268,4 @@ export default async function handler(req: Request): Promise<Response> {
 }
 
 // ⏰ cada 1 minuto (para pruebas). Volvé a */30 * * * * en producción.
-export const config = { schedule: "* * * * *" };
+export const config = { schedule: "/30 * * * *" };
