@@ -1,3 +1,4 @@
+// src/components/PushControls.tsx
 import { useCallback, useEffect, useState } from "react";
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
@@ -12,8 +13,9 @@ function urlBase64ToUint8Array(b64: string) {
 }
 
 export default function PushControls() {
-  const [active, setActive] = useState<boolean>(false);
+  const [active, setActive] = useState(false);
   const [endpoint, setEndpoint] = useState<string | null>(null);
+  const [mine, setMine] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!("serviceWorker" in navigator)) return;
@@ -21,61 +23,48 @@ export default function PushControls() {
     const sub = await reg?.pushManager.getSubscription();
     setActive(!!sub);
     setEndpoint(sub?.endpoint ?? null);
-    console.log(
-      "[refresh] subscription",
-      sub ? { endpoint: sub.endpoint } : null
-    );
   }, []);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("message", (e) => {
-        console.log("[SW message]", e.data);
-      });
-    }
     (async () => {
       const reg = await navigator.serviceWorker.register("/sw.js", {
         scope: "/",
       });
       console.log("[SW] registrado:", reg.scope);
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.addEventListener("message", (e) => {
+          console.log("[SW message]", e.data);
+        });
+      }
       await refresh();
     })();
   }, [refresh]);
 
+  const mySub = async () => {
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  };
+
   const enable = async () => {
     try {
-      console.log("--- ENABLE: pedir permiso ---");
       const perm = await Notification.requestPermission();
-      console.log("Notification.permission →", perm);
-      if (perm !== "granted") return console.warn("permiso no concedido");
-
-      if (!VAPID_PUBLIC)
-        console.warn("VAPID_PUBLIC vacío (VITE_VAPID_PUBLIC_KEY)");
-      else console.log("VAPID_PUBLIC length:", VAPID_PUBLIC.length);
-
-      console.log("--- ENABLE: subscribe() ---");
+      if (perm !== "granted") return alert("Permiso denegado");
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
       });
-      console.log("subscribe() OK endpoint:", sub.endpoint);
-
-      console.log("--- GUARDAR en save-subscription ---");
-      const resp = await fetch("/.netlify/functions/save-subscription", {
+      // guardar en server
+      await fetch("/.netlify/functions/save-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sub),
       });
-      console.log("save-subscription →", resp.status, resp.statusText);
-      const json = await resp.json().catch(() => null);
-      console.log("save-subscription body:", json);
-
       await refresh();
       alert("Activado ✅");
     } catch (e: any) {
-      console.error("ENABLE error", e?.name, e?.message || e);
-      alert("Falló activar (mirá los logs)");
+      alert("Falló activar");
+      console.error(e);
     }
   };
 
@@ -84,61 +73,87 @@ export default function PushControls() {
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = await reg?.pushManager.getSubscription();
       if (!sub) {
-        console.warn("no hay suscripción");
         await refresh();
         return;
       }
-      const endpoint = sub.endpoint;
-
-      console.log("--- UNSUBSCRIBE local ---");
+      const ep = sub.endpoint;
       await sub.unsubscribe();
-
-      console.log("--- UNSUBSCRIBE remoto (save-subscription?remove=1) ---");
-      const resp = await fetch(
-        "/.netlify/functions/save-subscription?remove=1",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint }),
-        }
-      );
-      console.log("remove →", resp.status, resp.statusText);
-      const body = await resp.json().catch(() => null);
-      console.log("remove body:", body);
-
+      await fetch("/.netlify/functions/save-subscription?remove=1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: ep }),
+      });
       await refresh();
       alert("Desactivado");
     } catch (e: any) {
-      console.error("DISABLE error", e?.name, e?.message || e);
-      alert("Falló desactivar (mirá los logs)");
+      alert("Falló desactivar");
+      console.error(e);
     }
   };
 
-  const testPush = async () => {
-    try {
-      console.log("--- TEST: send-push ---");
-      const resp = await fetch("/.netlify/functions/send-push", {
+  // === Botones “sin consola” ===
+  const showMyEndpoint = async () => {
+    const s = await mySub();
+    const ep = s?.endpoint || null;
+    setMine(ep);
+    alert(ep ? ep : "Sin suscripción");
+  };
+
+  const saveMySubscription = async () => {
+    const s = await mySub();
+    if (!s) return alert("Sin suscripción");
+    const r = await fetch("/.netlify/functions/save-subscription", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(s),
+    });
+    alert(r.ok ? "Guardada en servidor ✅" : "Error guardando");
+    await refresh();
+  };
+
+  const sendOnlyToThisDevice = async () => {
+    const s = await mySub();
+    if (!s) return alert("Sin suscripción");
+    const r = await fetch("/.netlify/functions/send-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Test a este dispositivo",
+        body: "Hola 👋",
+        url: "/",
+        subscription: s, // << envío directo sin depender de Blobs
+      }),
+    });
+    alert(r.ok ? "Enviado ✅" : "Error enviando");
+  };
+
+  const removeOtherEndpoints = async () => {
+    const s = await mySub();
+    const myEp = s?.endpoint;
+    const resp = await fetch("/.netlify/functions/list-subs");
+    const j = await resp.json().catch(() => ({}));
+    const others: string[] = (j.list || [])
+      .map((x: any) => x.endpoint)
+      .filter((ep: string) => ep !== myEp);
+    let removed = 0;
+    for (const ep of others) {
+      const r = await fetch("/.netlify/functions/save-subscription?remove=1", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: ep }),
       });
-      console.log("send-push →", resp.status, resp.statusText);
-      const text = await resp.text();
-      console.log("send-push body:", text);
-      if (!resp.ok) alert("send-push devolvió error (mirá logs)");
-    } catch (e: any) {
-      console.error("TEST error", e?.name, e?.message || e);
-      alert("Error llamando a send-push");
+      if (r.ok) removed++;
     }
+    await refresh();
+    alert(`Borrados ${removed} endpoints`);
   };
 
-  const listSubs = async () => {
-    try {
-      const resp = await fetch("/.netlify/functions/list-subs");
-      console.log("list-subs →", resp.status, resp.statusText);
-      const body = await resp.text();
-      console.log("list-subs body:", body);
-    } catch (e: any) {
-      console.error("list-subs error", e?.name, e?.message || e);
-    }
+  const pingCronNow = async () => {
+    // dispara la función programada en modo debug, para no esperar
+    const r = await fetch("/.netlify/functions/cron-30m?debug=1");
+    const txt = await r.text();
+    alert(r.ok ? "Cron OK (debug)" : "Cron error");
+    console.log("cron-30m?debug=1 →", txt);
   };
 
   return (
@@ -147,20 +162,35 @@ export default function PushControls() {
         <b>Estado:</b> {active ? "activado ✅" : "inactivo"}
         <br />
         {endpoint && (
-          <small style={{ opacity: 0.7 }}>endpoint: {endpoint}</small>
+          <small style={{ opacity: 0.7 }}>endpoint actual: {endpoint}</small>
+        )}
+        {mine && (
+          <div style={{ opacity: 0.7, marginTop: 4 }}>
+            <small>MI endpoint: {mine}</small>
+          </div>
         )}
       </div>
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={enable} disabled={active}>
           Activar
         </button>
-        <button onClick={testPush} disabled={!active}>
-          Probar push
-        </button>
         <button onClick={disable} disabled={!active}>
           Desactivar
         </button>
-        <button onClick={listSubs}>Listar subs</button>
+        <button onClick={showMyEndpoint} disabled={!active}>
+          Mi endpoint
+        </button>
+        <button onClick={saveMySubscription} disabled={!active}>
+          Guardar MI sub
+        </button>
+        <button onClick={sendOnlyToThisDevice} disabled={!active}>
+          Enviar a ESTE
+        </button>
+        <button onClick={removeOtherEndpoints} disabled={!active}>
+          Borrar otros
+        </button>
+        <button onClick={pingCronNow}>Probar cron (debug)</button>
       </div>
     </div>
   );
