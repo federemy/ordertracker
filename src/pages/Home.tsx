@@ -286,6 +286,7 @@ export default function Home() {
     const qtyNum = parseDec(form.qty as string);
     const priceNum = parseDec(form.price as string);
     if (!Number.isFinite(qtyNum) || !Number.isFinite(priceNum)) return;
+
     const o: Order = {
       id: uid(),
       ts: Date.now(),
@@ -295,7 +296,6 @@ export default function Home() {
       side: form.side,
     };
     setOrders((prev) => [o, ...prev]);
-    // limpiar inputs
     setForm((f) => ({ ...f, qty: "", price: "" }));
   };
 
@@ -887,25 +887,7 @@ export default function Home() {
 
             <div className="flex items-end">
               <button
-                onClick={() => {
-                  if (!form.asset || !form.qty || !form.price) return;
-                  const qtyNum = parseDec(form.qty as string);
-                  const priceNum = parseDec(form.price as string);
-                  if (!Number.isFinite(qtyNum) || !Number.isFinite(priceNum))
-                    return;
-
-                  const o: Order = {
-                    id: uid(),
-                    ts: Date.now(),
-                    asset: form.asset.toUpperCase().trim(), // ← del select
-                    qty: qtyNum,
-                    price: priceNum,
-                    side: form.side,
-                  };
-                  setOrders((prev) => [o, ...prev]);
-                  // limpiar inputs
-                  setForm((f) => ({ ...f, qty: "", price: "" }));
-                }}
+                onClick={addOrder}
                 className="w-full px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold"
               >
                 Añadir
