@@ -774,6 +774,9 @@ export default function Home() {
                 Última: {new Date(lastUpdated).toLocaleTimeString()}
               </span>
             )}
+            <Link to="/analisis" className="px-3 py-2 rounded-xl  text-white">
+              Ir a Análisis
+            </Link>
           </div>
         </section>
 
@@ -1062,13 +1065,6 @@ export default function Home() {
         {/* ===== Veredicto ETH ===== */}
         <EthVerdict data={ethAnalysis} />
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
-
-        <Link
-          to="/analisis"
-          className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white "
-        >
-          Ir a Análisis
-        </Link>
       </div>{" "}
     </div>
   );
