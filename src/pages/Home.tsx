@@ -5,6 +5,7 @@ import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
 import PushControls from "../components/PushControls";
+import PositionForm from "../components/PositionForm";
 
 /* ===== Types ===== */
 type Order = {
@@ -1035,10 +1036,11 @@ export default function Home() {
 
         <Link
           to="/analisis"
-          className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white"
+          className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white "
         >
           Ir a Análisis
         </Link>
+        <PositionForm />
       </div>{" "}
       <PushControls />
     </div>
