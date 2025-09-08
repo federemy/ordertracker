@@ -219,6 +219,7 @@ export default async function handler(req: Request): Promise<Response> {
       renotify: true, // en prod: false si no querés sonido cada vez
       icon: ICON_URL, // ← icono “lindo” (tu app)
       badge: BADGE_URL, // ← badge pequeño monocromo
+      price,
     });
 
     const loaded = await loadSubs();

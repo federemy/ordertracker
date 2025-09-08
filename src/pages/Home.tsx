@@ -4,8 +4,6 @@ import { Link } from "react-router-dom";
 import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
-import PushControls from "../components/PushControls";
-import PositionForm from "../components/PositionForm";
 
 /* ===== Types ===== */
 type Order = {
@@ -225,12 +223,43 @@ export default function Home() {
   const prevSignRef = useRef<Record<string, number>>({});
   const pushSentRef = useRef<Record<string, boolean>>({});
 
+  function pickPrimaryOrder(orders: Order[]): Order | null {
+    if (!orders?.length) return null;
+    // 1) priorizá ETH (la más reciente)
+    const eth = orders.find((o) => o.asset?.toUpperCase() === "ETH");
+    return eth || orders[0];
+  }
+
+  async function postPrimaryToSW(order: Order | null) {
+    try {
+      if (!("serviceWorker" in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const msg = order
+        ? {
+            asset: order.asset,
+            qty: Number(order.qty),
+            price: Number(order.price),
+            side: order.side || "SELL",
+          }
+        : null;
+
+      reg.active?.postMessage({ type: "SET_PRIMARY_ORDER", order: msg });
+    } catch {}
+  }
+
   useEffect(() => {
     localStorage.setItem(LS_ORDERS, JSON.stringify(orders));
+    postPrimaryToSW(pickPrimaryOrder(orders)); // 👈 sincroniza con el SW
   }, [orders]);
   useEffect(() => {
     localStorage.setItem(LS_PRICES, JSON.stringify(prices));
   }, [prices]);
+
+  useEffect(() => {
+    postPrimaryToSW(pickPrimaryOrder(orders));
+    // también podrías re-suscribir pushSub aquí si lo necesitás
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -1040,9 +1069,7 @@ export default function Home() {
         >
           Ir a Análisis
         </Link>
-        <PositionForm />
       </div>{" "}
-      <PushControls />
     </div>
   );
 }
