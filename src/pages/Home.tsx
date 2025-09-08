@@ -308,8 +308,9 @@ export default function Home() {
     setPrices({});
     setLastUpdated(null);
     pushToast("Almacenamiento local borrado", "info");
-    postPrimaryToSW(null);
+    postPrimaryToSW(null); // 👈 limpia en el SW (y cache)
   };
+
   const removeOrder = (id: string) =>
     setOrders((prev) => prev.filter((o) => o.id !== id));
 
