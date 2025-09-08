@@ -91,36 +91,21 @@ async function fetchEthPrice() {
   throw new Error("price providers failed: " + errors.join(" | "));
 }
 
-// ---- posición: orders -> fallback portfolio/eth ----
+// Lee SOLO de portfolio/eth (qty y avgPrice)
 async function loadPosition(): Promise<{
   qty: number;
   avgPrice: number;
 } | null> {
-  const orders = (await getList<Order[]>("orders", "list")) || null;
-  if (orders?.length) {
-    let qty = 0,
-      cost = 0;
-    for (const o of orders) {
-      const fee = Number(o.feeUsd || 0);
-      if (o.side === "buy") {
-        qty += o.qty;
-        cost += o.qty * o.price + fee;
-      } else if (o.side === "sell") {
-        const avg = qty > 0 ? cost / qty : 0;
-        qty -= o.qty;
-        cost -= avg * o.qty;
-        if (qty < 1e-12) {
-          qty = 0;
-          cost = 0;
-        }
-      }
-    }
-    if (qty > 0) return { qty, avgPrice: cost / qty };
-  }
-  const pf = await getList<PositionFallback>("portfolio", "eth");
-  if (pf && Number.isFinite(pf.qty) && Number.isFinite(pf.avgPrice))
-    return { qty: pf.qty, avgPrice: pf.avgPrice };
-  return null;
+  const pf = await getList<{ qty: number; avgPrice: number }>(
+    "portfolio",
+    "eth"
+  );
+  if (!pf) return null;
+  const qty = Number(pf.qty),
+    avg = Number(pf.avgPrice);
+  if (!Number.isFinite(qty) || !Number.isFinite(avg) || qty <= 0 || avg <= 0)
+    return null;
+  return { qty, avgPrice: avg };
 }
 
 // ---- cargar subs: list o blobs ----
