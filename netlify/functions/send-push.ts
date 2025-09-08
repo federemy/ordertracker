@@ -1,3 +1,4 @@
+// netlify/functions/send-push.ts
 import type { Handler } from "@netlify/functions";
 import webPush from "web-push";
 import { getList } from "./_store";
@@ -13,7 +14,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 type Sub = { endpoint: string; keys?: { p256dh?: string; auth?: string } };
 type Body = { title?: string; body?: string; url?: string; subscription?: Sub };
 
-const handler: Handler = async (event) => {
+export const handler: Handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
       return { statusCode: 405, body: "Method Not Allowed" };
@@ -33,12 +34,12 @@ const handler: Handler = async (event) => {
     const { title = "Ping", body = "", url = "/", subscription } = payload;
     const message = JSON.stringify({ title, body, url });
 
-    // 1) Envío directo (sin Blobs) si viene la 'subscription'
+    // 1) Envío directo a la suscripción pasada en el body
     if (subscription?.endpoint) {
       try {
         await webPush.sendNotification(subscription as any, message, {
           TTL: 300,
-        }); // ⬅️ TTL explícito
+        });
         return {
           statusCode: 200,
           headers: { "content-type": "application/json" },
@@ -55,7 +56,7 @@ const handler: Handler = async (event) => {
       }
     }
 
-    // 2) Caso Blobs (subs/list)
+    // 2) Envío a todas las suscripciones guardadas (subs/list)
     let subs: Sub[] = [];
     try {
       subs = ((await getList<Sub[]>("subs", "list")) || []).filter(
@@ -69,7 +70,7 @@ const handler: Handler = async (event) => {
           ok: false,
           error:
             "No hay 'subscription' en el body y Blobs no está disponible. " +
-            "Enviá { subscription } en el POST o configurá NETLIFY_BLOBS_*.",
+            "Enviá { subscription } en el POST o configurá NETLIFY_BLOBS_SITE_ID / NETLIFY_BLOBS_TOKEN.",
         }),
       };
     }
@@ -83,11 +84,13 @@ const handler: Handler = async (event) => {
     }
 
     let sent = 0;
-    const errors: any[] = [];
+    const errors: Array<{ endpoint: string; code?: number; error: string }> =
+      [];
+
     await Promise.all(
       subs.map(async (s) => {
         try {
-          await webPush.sendNotification(s as any, message, { TTL: 300 }); // ⬅️ TTL explícito
+          await webPush.sendNotification(s as any, message, { TTL: 300 });
           sent++;
         } catch (e: any) {
           errors.push({
@@ -112,5 +115,3 @@ const handler: Handler = async (event) => {
     };
   }
 };
-
-export default handler;
