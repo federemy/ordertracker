@@ -196,8 +196,8 @@ export default function Home() {
 
   const [form, setForm] = useState({
     asset: "ETH",
-    qty: 1,
-    price: 100,
+    qty: "",
+    price: "",
     side: "SELL" as "BUY" | "SELL",
   });
 
@@ -283,15 +283,30 @@ export default function Home() {
 
   const addOrder = () => {
     if (!form.asset || !form.qty || !form.price) return;
+    const qtyNum = parseDec(form.qty as string);
+    const priceNum = parseDec(form.price as string);
+    if (!Number.isFinite(qtyNum) || !Number.isFinite(priceNum)) return;
     const o: Order = {
       id: uid(),
       ts: Date.now(),
       asset: form.asset.toUpperCase().trim(),
-      qty: Number(form.qty),
-      price: Number(form.price),
+      qty: qtyNum,
+      price: priceNum,
       side: form.side,
     };
     setOrders((prev) => [o, ...prev]);
+    // limpiar inputs
+    setForm((f) => ({ ...f, qty: "", price: "" }));
+  };
+
+  const clearLocal = () => {
+    if (!confirm("¿Borrar órdenes y precios locales?")) return;
+    localStorage.removeItem(LS_ORDERS);
+    localStorage.removeItem(LS_PRICES);
+    setOrders([]);
+    setPrices({});
+    setLastUpdated(null);
+    pushToast("Almacenamiento local borrado", "info");
   };
   const removeOrder = (id: string) =>
     setOrders((prev) => prev.filter((o) => o.id !== id));
@@ -620,6 +635,14 @@ export default function Home() {
   const firstFeeUsd = first ? feeCloseUsdSimple(first, firstCurrent) : 0;
   const firstNetoSimple = first ? firstBruto - firstFeeUsd : 0;
 
+  /* Helpers para limpiar decimales */
+  const normalizeDecimal = (s: string) =>
+    s.replace(/[^\d.,]/g, "").replace(/,/g, ".");
+  const parseDec = (s: string) => {
+    const n = Number(normalizeDecimal(s));
+    return Number.isFinite(n) ? n : NaN;
+  };
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8">
       <div className="w-full mx-auto grid gap-6">
@@ -647,7 +670,6 @@ export default function Home() {
             </div>
           ))}
         </div>
-
         {/* ===== RESUMEN MOBILE ===== */}
         <section className="md:hidden order-0 p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur">
           {first ? (
@@ -732,7 +754,6 @@ export default function Home() {
             <div className="mt-3 text-sm text-neutral-500">Sin órdenes aún</div>
           )}
         </section>
-
         {/* ===== Top bar ===== */}
         <section className="sticky top-0 z-40 p-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 backdrop-blur supports-[backdrop-filter]:bg-neutral-900/50 order-2 md:order-none">
           <div className="flex flex-wrap items-center gap-3">
@@ -765,7 +786,14 @@ export default function Home() {
                   : "bg-white/10 hover:bg-white/20"
               )}
             >
-              {loading ? "Actualizando..." : "Actualizar ahora"}
+              {loading ? "Actualizando....." : "Actualizar ahora"}
+            </button>
+
+            <button
+              onClick={clearLocal}
+              className="px-3 py-2 rounded-xl text-sm bg-white/10 hover:bg-white/20"
+            >
+              Borrar local
             </button>
 
             <div className="grow" />
@@ -780,7 +808,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ===== Agregar orden ===== */}
         <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/30 grid gap-4 order-3 md:order-none">
           <div className="text-lg font-semibold">Agregar orden</div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -812,52 +839,73 @@ export default function Home() {
               </div>
             </div>
 
-            <div>
+            {/* Activo toma SIEMPRE el del select superior */}
+            <div className="md:col-span-1">
               <div className="text-xs text-neutral-400 mb-1">Activo</div>
-              <input
-                type="text"
-                value={form.asset}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    asset: e.target.value.toUpperCase(),
-                  }))
-                }
-                className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 w-full"
-              />
+              <div className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 w-full">
+                <span className="font-medium">{form.asset}</span>
+              </div>
             </div>
 
             <div>
               <div className="text-xs text-neutral-400 mb-1">Cantidad</div>
               <input
-                type="number"
-                step="0.000001"
+                type="text"
                 inputMode="decimal"
-                value={form.qty}
+                placeholder="ej: 0.75"
+                value={form.qty as any}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, qty: Number(e.target.value) }))
+                  setForm((f) => ({
+                    ...f,
+                    qty: normalizeDecimal(e.target.value),
+                  }))
                 }
                 className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 w-full"
+                autoComplete="off"
+                pattern="[0-9]*"
               />
             </div>
 
             <div>
               <div className="text-xs text-neutral-400 mb-1">Precio USD</div>
               <input
-                type="number"
-                step="0.01"
+                type="text"
                 inputMode="decimal"
-                value={form.price}
+                placeholder="ej: 2200"
+                value={form.price as any}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, price: Number(e.target.value) }))
+                  setForm((f) => ({
+                    ...f,
+                    price: normalizeDecimal(e.target.value),
+                  }))
                 }
                 className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 w-full"
+                autoComplete="off"
+                pattern="[0-9]*"
               />
             </div>
 
             <div className="flex items-end">
               <button
-                onClick={addOrder}
+                onClick={() => {
+                  if (!form.asset || !form.qty || !form.price) return;
+                  const qtyNum = parseDec(form.qty as string);
+                  const priceNum = parseDec(form.price as string);
+                  if (!Number.isFinite(qtyNum) || !Number.isFinite(priceNum))
+                    return;
+
+                  const o: Order = {
+                    id: uid(),
+                    ts: Date.now(),
+                    asset: form.asset.toUpperCase().trim(), // ← del select
+                    qty: qtyNum,
+                    price: priceNum,
+                    side: form.side,
+                  };
+                  setOrders((prev) => [o, ...prev]);
+                  // limpiar inputs
+                  setForm((f) => ({ ...f, qty: "", price: "" }));
+                }}
                 className="w-full px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold"
               >
                 Añadir
@@ -865,7 +913,6 @@ export default function Home() {
             </div>
           </div>
         </section>
-
         {/* ===== Tabla de órdenes ===== */}
         <section className="rounded-2xl overflow-auto border border-neutral-800 order-1 md:order-none">
           <table className="w-full text-sm">
@@ -1061,7 +1108,6 @@ export default function Home() {
             </tbody>
           </table>
         </section>
-
         {/* ===== Veredicto ETH ===== */}
         <EthVerdict data={ethAnalysis} />
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
