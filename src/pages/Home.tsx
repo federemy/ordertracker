@@ -173,7 +173,9 @@ export async function enablePush() {
 
 export default function Home() {
   /* ===== State ===== */
-  const ethAnalysisLoadedRef = useRef(false);
+  // ⬇️ Reemplazo: TTL de 10 minutos para recalcular análisis
+  const ETH_ANALYSIS_TTL_MS = 10 * 60 * 1000;
+  const lastEthAnalysisTsRef = useRef<number>(0);
 
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
@@ -345,11 +347,13 @@ export default function Home() {
         setLastUpdated(Date.now());
       }
 
-      // === 2) Análisis intradiario ETH (SOLO 1 VEZ)
-      if (
-        symbols.map((s) => s.toUpperCase()).includes("ETH") &&
-        !ethAnalysisLoadedRef.current
-      ) {
+      // === 2) Análisis intradiario ETH (cada 10 minutos)
+      const symbolsUpper = symbols.map((s) => s.toUpperCase());
+      const needEthUpdate =
+        symbolsUpper.includes("ETH") &&
+        Date.now() - (lastEthAnalysisTsRef.current || 0) >= ETH_ANALYSIS_TTL_MS;
+
+      if (needEthUpdate) {
         setEthLoading(true);
         setEthError(null);
 
@@ -439,11 +443,12 @@ export default function Home() {
             ts: Date.now(),
           });
 
-          ethAnalysisLoadedRef.current = true; // marcar sólo si salió bien
+          // ✅ Actualizamos el sello de tiempo del último análisis
+          lastEthAnalysisTsRef.current = Date.now();
         } catch (e: any) {
           console.error("ETH intraday error:", e?.message || e);
           setEthError("No se pudo calcular el análisis intradiario de ETH.");
-          // dejamos el ref en false para reintentar en el próximo tick
+          // No actualizamos el timestamp para reintentar en el próximo tick
         } finally {
           setEthLoading(false);
         }
@@ -1094,6 +1099,7 @@ export default function Home() {
         </section>
         {/* ===== Veredicto ETH ===== */}
         <EthVerdict data={ethAnalysis} />
+        {/* ===== Intradía & 1 día ===== */}
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
       </div>{" "}
     </div>
