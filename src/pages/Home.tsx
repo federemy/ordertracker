@@ -178,6 +178,7 @@ export default function Home() {
   // ⬇️ Reemplazo: TTL de 10 minutos para recalcular análisis
   const ETH_ANALYSIS_TTL_MS = 10 * 60 * 1000;
   const lastEthAnalysisTsRef = useRef<number>(0);
+  const [ethRefreshKey, setEthRefreshKey] = useState<number>(0);
 
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
@@ -359,6 +360,7 @@ export default function Home() {
       const needEthUpdate =
         symbolsUpper.includes("ETH") &&
         Date.now() - (lastEthAnalysisTsRef.current || 0) >= ETH_ANALYSIS_TTL_MS;
+      setEthRefreshKey(Date.now()); // 👈 dispara refresh de AssetRanges
 
       if (needEthUpdate) {
         setEthLoading(true);
@@ -1165,12 +1167,21 @@ export default function Home() {
             </tbody>
           </table>
         </section>
-        <AssetRanges asset={form.asset} price={prices[form.asset]} />
+        {/* Arriba: Veredicto + Rangos (dos columnas en desktop) */}
+        <div className="grid gap-6 md:grid-cols-2 items-start">
+          <div className="h-full">
+            <EthVerdict data={ethAnalysis} />
+          </div>
+          <div className="h-full">
+            <AssetRanges
+              asset={form.asset}
+              price={prices[form.asset]}
+              refreshKey={ethRefreshKey} // la misma clave de refresh cada 10 min
+            />
+          </div>
+        </div>
 
-        {/* ===== Veredicto ETH ===== */}
-        <EthVerdict data={ethAnalysis} />
-
-        {/* ===== Intradía & 1 día ===== */}
+        {/* Abajo: Intradía & 1 día (full width) */}
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
       </div>{" "}
     </div>
