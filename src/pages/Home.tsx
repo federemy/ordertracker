@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
+import AssetRanges from "../components/AssetRanges";
 
 /* ===== Types ===== */
 type Order = {
@@ -1164,8 +1165,11 @@ export default function Home() {
             </tbody>
           </table>
         </section>
+        <AssetRanges asset={form.asset} price={prices[form.asset]} />
+
         {/* ===== Veredicto ETH ===== */}
         <EthVerdict data={ethAnalysis} />
+
         {/* ===== Intradía & 1 día ===== */}
         <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
       </div>{" "}
