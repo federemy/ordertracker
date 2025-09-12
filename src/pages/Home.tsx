@@ -19,6 +19,7 @@ type PriceMap = Record<string, number>;
 /* ===== Storage keys ===== */
 const LS_ORDERS = "simple_orders_v1";
 const LS_PRICES = "simple_prices_v1";
+const LS_FREQ_MIN = "push_freq_minutes_v1";
 
 /* ===== Utils ===== */
 const money = new Intl.NumberFormat("en-US", {
@@ -221,6 +222,11 @@ export default function Home() {
       4000
     );
   };
+
+  const [freqMinutes, setFreqMinutes] = useState<number>(() => {
+    const n = Number(localStorage.getItem(LS_FREQ_MIN) || "30");
+    return Number.isFinite(n) && n > 0 ? n : 30;
+  });
 
   const prevSignRef = useRef<Record<string, number>>({});
   const pushSentRef = useRef<Record<string, boolean>>({});
@@ -457,6 +463,40 @@ export default function Home() {
       console.error("fetchPricesBatch error:", err?.message || err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [draftFreq, setDraftFreq] = useState<number>(freqMinutes);
+  const [savingFreq, setSavingFreq] = useState(false);
+
+  const saveFrequency = async () => {
+    try {
+      setSavingFreq(true);
+      const v = Math.max(1, Math.floor(Number(draftFreq) || 1));
+
+      // 1) Guardar local
+      localStorage.setItem(LS_FREQ_MIN, String(v));
+      setFreqMinutes(v);
+
+      // 2) Sync backend si hay suscripción
+      if (pushSub?.endpoint) {
+        const r = await fetch("/.netlify/functions/save-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: pushSub.endpoint, freqMinutes: v }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+      } else {
+        // opcional: avisar que quedó local si querés
+        // pushToast("Guardado local. Activá notificaciones para sincronizar.", "info");
+      }
+
+      pushToast("Frecuencia guardada ✔", "success");
+    } catch (e) {
+      console.error("saveFrequency error", e);
+      pushToast("No pude guardar la frecuencia", "error");
+    } finally {
+      setSavingFreq(false);
     }
   };
 
@@ -812,6 +852,33 @@ export default function Home() {
             <Link to="/analisis" className="px-3 py-2 rounded-xl  text-white">
               Ir a Análisis
             </Link>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-neutral-400">Notificar cada</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={draftFreq}
+                onChange={(e) =>
+                  setDraftFreq(Math.max(1, Number(e.target.value || 1)))
+                }
+                className="w-20 px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 text-right"
+              />
+              <span className="text-sm text-neutral-400">min</span>
+
+              <button
+                onClick={saveFrequency}
+                disabled={savingFreq || draftFreq === freqMinutes}
+                className={
+                  "px-3 py-2 rounded-xl text-sm " +
+                  (savingFreq || draftFreq === freqMinutes
+                    ? "opacity-50 cursor-not-allowed bg-white/10"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white")
+                }
+              >
+                {savingFreq ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
           </div>
         </section>
 
