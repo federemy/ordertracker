@@ -5,6 +5,7 @@ type Props = {
   asset: string; // "ETH", "BTC", etc.
   price?: number | null; // precio actual (USDT)
   refreshKey?: number; // cambia cada 10 min desde Home para forzar fetch
+  orderType?: "BUY" | "SELL"; // tipo de la orden principal (opcional)
 };
 
 type Kline = [
@@ -23,6 +24,10 @@ type Kline = [
 ];
 
 const TEN_MIN = 10 * 60 * 1000;
+
+// Umbrales de “cercanía”
+const NEAR_LOW_POS = 0.1; // <= 10% del rango (cerca del piso / ATL relativo)
+const NEAR_HIGH_POS = 0.9; // >= 90% del rango (cerca del techo / ATH relativo)
 
 function fmt(n: number | null | undefined, maxFrac = 2) {
   if (n == null || !isFinite(n)) return "—";
@@ -49,7 +54,14 @@ function oneLiner(pos: number | null, label: string) {
   return `${label}: mitad del rango; neutral.`;
 }
 
-function RangeBar({ pos }: { pos: number | null }) {
+type Accent = "neutral" | "positive" | "negative";
+function RangeBar({ pos, accent }: { pos: number | null; accent: Accent }) {
+  const fill =
+    accent === "positive"
+      ? "bg-emerald-500"
+      : accent === "negative"
+      ? "bg-rose-500"
+      : "bg-sky-500";
   return (
     <div className="w-full h-2 rounded-full overflow-hidden relative bg-neutral-800">
       {/* bandas 0-25-50-75-100 */}
@@ -60,7 +72,7 @@ function RangeBar({ pos }: { pos: number | null }) {
         <div className="bg-white/10" />
       </div>
       <div
-        className="relative h-full bg-sky-500"
+        className={`relative h-full ${fill}`}
         style={{
           width: `${(pos ?? 0) * 100}%`,
           transition: "width 300ms ease",
@@ -70,7 +82,12 @@ function RangeBar({ pos }: { pos: number | null }) {
   );
 }
 
-export default function AssetRanges({ asset, price, refreshKey }: Props) {
+export default function AssetRanges({
+  asset,
+  price,
+  refreshKey,
+  orderType,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [klines, setKlines] = useState<Kline[]>([]);
@@ -161,27 +178,30 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
       return { min: Math.min(...s), max: Math.max(...s) };
     };
 
-    // NUEVO: 7d y 15d
+    // 7d y 15d
     const w7 = win(7);
     const w15 = win(15);
 
-    // Ventanas existentes
+    // Resto
     const w30 = win(30);
     const w90 = win(90);
     const w180 = win(180);
     const w365 = win(365);
 
-    // ATH/ATL en lo descargado
+    // ATH/ATL aprox (histórico descargado)
     const ath = highs.length ? Math.max(...highs) : null;
     const atl = lows.length ? Math.min(...lows) : null;
 
     // Posiciones del precio actual en cada rango
-    const pos7 = w7 && p != null ? pctPos(w7.min, w7.max, p) : null;
-    const pos15 = w15 && p != null ? pctPos(w15.min, w15.max, p) : null;
-    const pos30 = w30 && p != null ? pctPos(w30.min, w30.max, p) : null;
-    const pos90 = w90 && p != null ? pctPos(w90.min, w90.max, p) : null;
-    const pos180 = w180 && p != null ? pctPos(w180.min, w180.max, p) : null;
-    const pos365 = w365 && p != null ? pctPos(w365.min, w365.max, p) : null;
+    const pos = (w?: { min: number; max: number } | null) =>
+      w && p != null ? pctPos(w.min, w.max, p) : null;
+
+    const pos7 = pos(w7);
+    const pos15 = pos(w15);
+    const pos30 = pos(w30);
+    const pos90 = pos(w90);
+    const pos180 = pos(w180);
+    const pos365 = pos(w365);
 
     const fromAthPct = ath && p ? (p / ath - 1) * 100 : null;
     const athTag =
@@ -217,6 +237,47 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
       oneLiner(pos365, "Largo (1a)"),
     ];
 
+    // ---------- Señal por tipo de orden ----------
+    const nearATL = pos365 != null && pos365 <= NEAR_LOW_POS;
+    const nearATH = pos365 != null && pos365 >= NEAR_HIGH_POS;
+
+    let actionText: string | null = null;
+    let actionClass =
+      "px-2 py-0.5 rounded-full text-[11px] border bg-neutral-800 border-neutral-700 text-neutral-300";
+    let accent: Accent = "neutral";
+
+    if (orderType === "SELL") {
+      if (nearATL) {
+        actionText = "Señal: recomprar / cerrar (precio cerca del ATL)";
+        actionClass =
+          "px-2 py-0.5 rounded-full text-[11px] border bg-emerald-600/15 border-emerald-700/40 text-emerald-300";
+        accent = "positive";
+      } else if (nearATH) {
+        actionText = "Riesgo alto para cerrar (precio cerca del ATH)";
+        actionClass =
+          "px-2 py-0.5 rounded-full text-[11px] border bg-rose-600/15 border-rose-700/40 text-rose-300";
+        accent = "negative";
+      } else {
+        actionText = "Neutral para cerrar";
+        accent = "neutral";
+      }
+    } else if (orderType === "BUY") {
+      if (nearATH) {
+        actionText = "Señal: vender / tomar ganancia (precio cerca del ATH)";
+        actionClass =
+          "px-2 py-0.5 rounded-full text-[11px] border bg-emerald-600/15 border-emerald-700/40 text-emerald-300";
+        accent = "positive";
+      } else if (nearATL) {
+        actionText = "Riesgo de vender bajo (precio cerca del ATL)";
+        actionClass =
+          "px-2 py-0.5 rounded-full text-[11px] border bg-rose-600/15 border-rose-700/40 text-rose-300";
+        accent = "negative";
+      } else {
+        actionText = "Neutral para vender";
+        accent = "neutral";
+      }
+    }
+
     return {
       last: p,
       ath,
@@ -237,8 +298,12 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
       athTag,
       verdict,
       bullets,
+      // extras para UI de señal
+      actionText,
+      actionClass,
+      accent,
     };
-  }, [klines, price]);
+  }, [klines, price, orderType]);
 
   if (loading && !summary) {
     return (
@@ -260,9 +325,16 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
   }
   if (!summary) return null;
 
+  const accent = summary.accent as Accent;
+
   return (
     <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-3">
-      <div className="text-lg font-semibold">{asset} — Rangos y ATH</div>
+      <div className="flex items-center justify-between">
+        <div className="text-lg font-semibold">{asset} — Rangos y ATH</div>
+        {summary.actionText && (
+          <span className={summary.actionClass}>{summary.actionText}</span>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
         <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800">
@@ -302,7 +374,7 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
             {fmt(summary.w7?.min)} – {fmt(summary.w7?.max)}
           </span>
         </div>
-        <RangeBar pos={summary.pos7} />
+        <RangeBar pos={summary.pos7} accent={accent} />
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>
@@ -318,7 +390,7 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
             {fmt(summary.w15?.min)} – {fmt(summary.w15?.max)}
           </span>
         </div>
-        <RangeBar pos={summary.pos15} />
+        <RangeBar pos={summary.pos15} accent={accent} />
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>
@@ -334,7 +406,7 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
             {fmt(summary.w30?.min)} – {fmt(summary.w30?.max)}
           </span>
         </div>
-        <RangeBar pos={summary.pos30} />
+        <RangeBar pos={summary.pos30} accent={accent} />
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>
@@ -350,7 +422,7 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
             {fmt(summary.w90?.min)} – {fmt(summary.w90?.max)}
           </span>
         </div>
-        <RangeBar pos={summary.pos90} />
+        <RangeBar pos={summary.pos90} accent={accent} />
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>
@@ -366,7 +438,7 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
             {fmt(summary.w180?.min)} – {fmt(summary.w180?.max)}
           </span>
         </div>
-        <RangeBar pos={summary.pos180} />
+        <RangeBar pos={summary.pos180} accent={accent} />
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>
@@ -382,7 +454,7 @@ export default function AssetRanges({ asset, price, refreshKey }: Props) {
             {fmt(summary.w365?.min)} – {fmt(summary.w365?.max)}
           </span>
         </div>
-        <RangeBar pos={summary.pos365} />
+        <RangeBar pos={summary.pos365} accent={accent} />
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>

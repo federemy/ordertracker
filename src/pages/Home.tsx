@@ -694,6 +694,8 @@ export default function Home() {
     return Number.isFinite(n) ? n : NaN;
   };
 
+  const primaryOrder = pickPrimaryOrder(orders);
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8">
       <div className="w-full mx-auto grid gap-6">
@@ -1176,7 +1178,8 @@ export default function Home() {
             <AssetRanges
               asset={form.asset}
               price={prices[form.asset]}
-              refreshKey={ethRefreshKey} // la misma clave de refresh cada 10 min
+              refreshKey={ethRefreshKey} // tu clave de refresh cada 10 min
+              orderType={primaryOrder?.side} // 👈 BUY | SELL según tu lógica
             />
           </div>
         </div>
