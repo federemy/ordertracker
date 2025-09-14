@@ -1173,6 +1173,13 @@ export default function Home() {
         <div className="grid gap-6 md:grid-cols-2 items-start">
           <div className="h-full">
             <EthVerdict data={ethAnalysis} />
+
+            {/* Abajo: Intradía & 1 día (full width) */}
+            <EthIntraday
+              data={ethAnalysis}
+              loading={ethLoading}
+              error={ethError}
+            />
           </div>
           <div className="h-full">
             <AssetRanges
@@ -1183,9 +1190,6 @@ export default function Home() {
             />
           </div>
         </div>
-
-        {/* Abajo: Intradía & 1 día (full width) */}
-        <EthIntraday data={ethAnalysis} loading={ethLoading} error={ethError} />
       </div>{" "}
     </div>
   );
