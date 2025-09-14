@@ -263,11 +263,9 @@ export default function AssetRanges({
   };
 
   const visibleMobileKeys: PeriodKey[] = ["7d", "15d", "1m"];
-  const [mobileHidden, mobileShown] = useMemo(() => {
-    if (!rows) return [[], []] as [RangeRow[], RangeRow[]];
-    const hidden = rows.filter((r) => !visibleMobileKeys.includes(r.key));
-    const shown = rows.filter((r) => visibleMobileKeys.includes(r.key));
-    return [hidden, shown];
+  const mobileHidden = useMemo(() => {
+    if (!rows) return [] as RangeRow[];
+    return rows.filter((r) => !visibleMobileKeys.includes(r.key));
   }, [rows]);
 
   return (
