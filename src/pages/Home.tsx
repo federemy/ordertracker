@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import EthIntraday from "../components/EthIntraday";
@@ -360,7 +360,7 @@ export default function Home() {
       const needEthUpdate =
         symbolsUpper.includes("ETH") &&
         Date.now() - (lastEthAnalysisTsRef.current || 0) >= ETH_ANALYSIS_TTL_MS;
-      setEthRefreshKey(Date.now()); // 👈 dispara refresh de AssetRanges
+      setEthRefreshKey(Math.floor(Date.now() / (10 * 60 * 1000))); // 👈 cambia solo cada 10'
 
       if (needEthUpdate) {
         setEthLoading(true);
@@ -1177,9 +1177,9 @@ export default function Home() {
           <div className="h-full">
             <AssetRanges
               asset={form.asset}
-              price={prices[form.asset]}
+              price={prices[form.asset] || 0}
               refreshKey={ethRefreshKey} // tu clave de refresh cada 10 min
-              orderType={primaryOrder?.side} // 👈 BUY | SELL según tu lógica
+              orderType={primaryOrder?.side ?? form.side}
             />
           </div>
         </div>
