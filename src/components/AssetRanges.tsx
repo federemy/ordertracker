@@ -275,7 +275,9 @@ export default function AssetRanges({
           {asset.toUpperCase()} — ATH / ATL por período
         </div>
         {loading && (
-          <div className="text-xs text-neutral-400">Actualizando…</div>
+          <div className="hidden md:block text-xs text-neutral-400">
+            Actualizando…
+          </div>
         )}
       </div>
 
