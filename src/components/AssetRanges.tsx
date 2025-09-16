@@ -262,60 +262,53 @@ export default function AssetRanges({
     );
   };
 
-  // === Mini-VEREDICTO ATH/ATL ===
+  // === Mini-VEREDICTO ATH/ATL (simplificado) ===
   function verdictFromRange(r?: RangeRow, side?: OrderSide) {
     if (!r) return { text: "—", cls: "text-neutral-300" };
-
-    const posPct = Math.round(r.pos * 100); // 0..100
-    const distAthPct =
-      r.max > 0 ? Math.max(0, ((r.max - (price || 0)) / r.max) * 100) : 0;
-    const distAtlPct =
-      r.min > 0 ? Math.max(0, (((price || 0) - r.min) / r.min) * 100) : 0;
 
     // bucket por tercios
     const zone = r.pos <= 1 / 3 ? "barato" : r.pos >= 2 / 3 ? "caro" : "medio";
 
-    // mensaje base por BUY/SELL
     let headline = "";
     let cls = "text-neutral-300";
+
     if (side === "BUY") {
       if (zone === "barato") {
-        headline = "Precio en zona barata. Favorable para comprar.";
+        headline =
+          "El precio está en una zona barata, parece buen momento para comprar.";
         cls = "text-emerald-300";
       } else if (zone === "caro") {
-        headline = "Precio en zona cara. Riesgo de compra elevado.";
+        headline = "El precio está caro, puede ser mejor esperar.";
         cls = "text-rose-300";
       } else {
-        headline = "Precio en zona media. Señal neutral para compra.";
+        headline =
+          "El precio está en un punto intermedio, sin señal clara para comprar.";
       }
     } else if (side === "SELL") {
       if (zone === "caro") {
-        headline = "Precio en zona alta. Favorable para vender.";
+        headline = "El precio está alto, parece buen momento para vender.";
         cls = "text-emerald-300";
       } else if (zone === "barato") {
-        headline = "Precio en zona baja. Desfavorable para vender.";
+        headline = "El precio está bajo, no conviene vender ahora.";
         cls = "text-rose-300";
       } else {
-        headline = "Precio en zona media. Señal neutral para venta.";
+        headline =
+          "El precio está en un punto intermedio, sin señal clara para vender.";
       }
     } else {
       // sin orden definida
       if (zone === "barato") {
-        headline = "En tercio inferior del rango (barato).";
+        headline = "El precio está en zona baja (barato).";
         cls = "text-emerald-300";
       } else if (zone === "caro") {
-        headline = "En tercio superior del rango (caro).";
+        headline = "El precio está en zona alta (caro).";
         cls = "text-rose-300";
       } else {
-        headline = "En el rango medio.";
+        headline = "El precio está en el medio del rango.";
       }
     }
 
-    const extra = `Posición: ${posPct}% del rango · a ${distAtlPct.toFixed(
-      1
-    )}% del ATL y ${distAthPct.toFixed(1)}% del ATH.`;
-
-    return { text: `${headline} ${extra}`, cls };
+    return { text: headline, cls };
   }
 
   // tomo 1m como período "principal" para el veredicto; si falta, fallback
