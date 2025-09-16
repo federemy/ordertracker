@@ -223,7 +223,7 @@ export default function AssetRanges({
             style={{ width: `${r.exp * 100}%` }}
           />
 
-          {/* Colores con utilidades (no especifico colores inline para accesibilidad) */}
+          {/* Colores con utilidades */}
           <div
             className="absolute inset-y-0 left-0 bg-emerald-700/30"
             style={{ width: "33.3333%" }}
@@ -252,7 +252,7 @@ export default function AssetRanges({
           <span>ATH {fmtMoney(r.max)}</span>
         </div>
 
-        {/* Mini leyenda barato/medio/caro (opcional reforzado) */}
+        {/* Mini leyenda barato/medio/caro */}
         <div className="flex justify-between text-[10px] text-neutral-500">
           <span>barato</span>
           <span>medio</span>
@@ -262,11 +262,81 @@ export default function AssetRanges({
     );
   };
 
+  // === Mini-VEREDICTO ATH/ATL ===
+  function verdictFromRange(r?: RangeRow, side?: OrderSide) {
+    if (!r) return { text: "—", cls: "text-neutral-300" };
+
+    const posPct = Math.round(r.pos * 100); // 0..100
+    const distAthPct =
+      r.max > 0 ? Math.max(0, ((r.max - (price || 0)) / r.max) * 100) : 0;
+    const distAtlPct =
+      r.min > 0 ? Math.max(0, (((price || 0) - r.min) / r.min) * 100) : 0;
+
+    // bucket por tercios
+    const zone = r.pos <= 1 / 3 ? "barato" : r.pos >= 2 / 3 ? "caro" : "medio";
+
+    // mensaje base por BUY/SELL
+    let headline = "";
+    let cls = "text-neutral-300";
+    if (side === "BUY") {
+      if (zone === "barato") {
+        headline = "Precio en zona barata. Favorable para comprar.";
+        cls = "text-emerald-300";
+      } else if (zone === "caro") {
+        headline = "Precio en zona cara. Riesgo de compra elevado.";
+        cls = "text-rose-300";
+      } else {
+        headline = "Precio en zona media. Señal neutral para compra.";
+      }
+    } else if (side === "SELL") {
+      if (zone === "caro") {
+        headline = "Precio en zona alta. Favorable para vender.";
+        cls = "text-emerald-300";
+      } else if (zone === "barato") {
+        headline = "Precio en zona baja. Desfavorable para vender.";
+        cls = "text-rose-300";
+      } else {
+        headline = "Precio en zona media. Señal neutral para venta.";
+      }
+    } else {
+      // sin orden definida
+      if (zone === "barato") {
+        headline = "En tercio inferior del rango (barato).";
+        cls = "text-emerald-300";
+      } else if (zone === "caro") {
+        headline = "En tercio superior del rango (caro).";
+        cls = "text-rose-300";
+      } else {
+        headline = "En el rango medio.";
+      }
+    }
+
+    const extra = `Posición: ${posPct}% del rango · a ${distAtlPct.toFixed(
+      1
+    )}% del ATL y ${distAthPct.toFixed(1)}% del ATH.`;
+
+    return { text: `${headline} ${extra}`, cls };
+  }
+
+  // tomo 1m como período "principal" para el veredicto; si falta, fallback
+  const pickVerdictRow = (rs?: RangeRow[] | null) => {
+    if (!rs || rs.length === 0) return undefined;
+    return (
+      rs.find((r) => r.key === "1m") ||
+      rs.find((r) => r.key === "3m") ||
+      rs.find((r) => r.key === "1a") ||
+      rs[0]
+    );
+  };
+
   const visibleMobileKeys: PeriodKey[] = ["7d", "15d", "1m"];
   const mobileHidden = useMemo(() => {
     if (!rows) return [] as RangeRow[];
     return rows.filter((r) => !visibleMobileKeys.includes(r.key));
   }, [rows]);
+
+  const verdictRow = pickVerdictRow(rows);
+  const verdict = verdictFromRange(verdictRow, orderType);
 
   return (
     <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-4">
@@ -291,7 +361,6 @@ export default function AssetRanges({
         <>
           {/* mobile: solo 7d/15d/1m si no está expandido */}
           <div className="grid gap-4">
-            {/* siempre muestro los primeros en mobile y todos en md+ */}
             {(rows || []).map((r) => {
               const isHiddenOnMobile =
                 !mobileExpanded && !visibleMobileKeys.includes(r.key);
@@ -318,6 +387,21 @@ export default function AssetRanges({
                 {mobileExpanded ? "Ver menos" : "Ver más"}
               </button>
             )}
+          </div>
+
+          {/* Mini-veredicto ATH/ATL */}
+          <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <b>Veredicto ATH/ATL</b>
+              <span className="text-xs text-neutral-400">
+                Base: {verdictRow?.label || "—"}
+              </span>
+            </div>
+            <div className={`mt-1 ${verdict.cls}`}>{verdict.text}</div>
+            <div className="mt-2 text-[11px] text-neutral-500">
+              *Heurística educativa basada en posición relativa dentro del rango
+              (ATL↔ATH). No es recomendación financiera.
+            </div>
           </div>
         </>
       )}
