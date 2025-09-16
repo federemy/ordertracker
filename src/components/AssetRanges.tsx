@@ -398,10 +398,6 @@ export default function AssetRanges({
               </span>
             </div>
             <div className={`mt-1 ${verdict.cls}`}>{verdict.text}</div>
-            <div className="mt-2 text-[11px] text-neutral-500">
-              *Heurística educativa basada en posición relativa dentro del rango
-              (ATL↔ATH). No es recomendación financiera.
-            </div>
           </div>
         </>
       )}
