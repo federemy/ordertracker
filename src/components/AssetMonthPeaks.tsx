@@ -28,8 +28,6 @@ function toSymbol(asset: string) {
   return `${asset.toUpperCase()}USDT`;
 }
 
-// Proxy Netlify → Binance (evita CORS/bloqueos regionales)
-// 30 días ~ 30*24 = 720 velas 1h
 async function fetchMonth1h(symbol: string, limit = 720): Promise<Candle[]> {
   const url = `/.netlify/functions/binance-proxy?symbol=${symbol}&interval=1h&limit=${limit}`;
   const r = await fetch(url, { headers: { "cache-control": "no-cache" } });
@@ -44,7 +42,6 @@ async function fetchMonth1h(symbol: string, limit = 720): Promise<Candle[]> {
   }));
 }
 
-// Detecta picos locales en una serie de cierres con ventana +/-w
 function detectLocalExtrema(
   data: number[],
   w: number,
@@ -70,7 +67,6 @@ function detectLocalExtrema(
   return idxs;
 }
 
-// Filtra picos demasiado cercanos en el tiempo (ej. 6h)
 function dedupeByTime(peaks: Peak[], candles: Candle[], minHours = 6) {
   const keep: Peak[] = [];
   const minMs = minHours * 3600 * 1000;
@@ -83,15 +79,13 @@ function dedupeByTime(peaks: Peak[], candles: Candle[], minHours = 6) {
   return keep;
 }
 
-// Convierte time → hora con offset UTC-3
 function hourUTCminus3(ms: number) {
   const utcHour = new Date(ms).getUTCHours();
-  return (utcHour - 3 + 24) % 24; // UTC-3
+  return (utcHour - 3 + 24) % 24;
 }
 
 function ddmmyy_hhmm_utc3(ms: number) {
   const d = new Date(ms);
-  // Formateo manual con UTC para consistencia, luego offset -3
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
@@ -100,7 +94,6 @@ function ddmmyy_hhmm_utc3(ms: number) {
   return `${dd}/${mm}/${String(yyyy).slice(-2)} ${hh}:${min}`;
 }
 
-// Mini gráfico SVG (sparkline + marcadores de picos)
 function Sparkline({ candles, peaks }: { candles: Candle[]; peaks: Peak[] }) {
   if (!candles.length) return null;
   const w = 600;
@@ -125,11 +118,8 @@ function Sparkline({ candles, peaks }: { candles: Candle[]; peaks: Peak[] }) {
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[140px]">
-      {/* Fondo suave */}
       <rect x="0" y="0" width={w} height={h} className="fill-neutral-900/50" />
-      {/* Línea */}
       <path d={d} className="stroke-white/80 fill-none" strokeWidth={1.5} />
-      {/* Rango min/max de referencia */}
       <line
         x1={pad}
         x2={w - pad}
@@ -146,7 +136,6 @@ function Sparkline({ candles, peaks }: { candles: Candle[]; peaks: Peak[] }) {
         className="stroke-rose-500/30"
         strokeWidth={1}
       />
-      {/* Picos */}
       {peaks.map((p, i) => (
         <circle
           key={i}
@@ -182,24 +171,20 @@ export default function AssetMonthPeaks({
       const data = await fetchMonth1h(symbol, 720);
       setCandles(data);
 
-      // Detectar picos
       const closes = data.map((c) => c.close);
       const type = orderType === "BUY" ? "max" : "min";
       const idxs = detectLocalExtrema(closes, 4, type);
 
-      // Inicialmente todos
       let ext: Peak[] = idxs.map((i) => ({
         t: data[i].t,
         price: closes[i],
         idx: i,
       }));
 
-      // Ordenar por valor extremo (más relevantes primero)
       ext.sort((a, b) =>
         orderType === "BUY" ? b.price - a.price : a.price - b.price
       );
 
-      // De-duplicar por proximidad temporal (6h) y quedarse con top 10
       ext = dedupeByTime(ext, data, 6).slice(0, 10);
 
       setPeaks(ext);
@@ -216,6 +201,31 @@ export default function AssetMonthPeaks({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, orderType]);
 
+  // Frase resumen automática
+  const summary = useMemo(() => {
+    if (!candles?.length) return "";
+    const closes = candles.map((c) => c.close);
+    const last = closes.at(-1) || 0;
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
+    const span = max - min || 1;
+    const pos = (last - min) / span;
+
+    if (orderType === "SELL") {
+      if (pos <= 0.3)
+        return "El precio está más cerca de los mínimos: vender ahora es menos favorable.";
+      if (pos >= 0.7)
+        return "El precio está en zona alta: puede ser buen momento para vender.";
+      return "El precio está en zona intermedia: sin señal clara de venta.";
+    } else {
+      if (pos <= 0.3)
+        return "El precio está bajo: puede ser buen momento para comprar.";
+      if (pos >= 0.7)
+        return "El precio está caro: comprar ahora es más riesgoso.";
+      return "El precio está en zona intermedia: sin señal clara de compra.";
+    }
+  }, [candles, orderType]);
+
   return (
     <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -231,7 +241,6 @@ export default function AssetMonthPeaks({
       </div>
 
       {err && <div className="text-sm text-rose-400">Error: {String(err)}</div>}
-
       {!candles && !err && (
         <div className="text-sm text-neutral-400">Cargando…</div>
       )}
@@ -298,6 +307,11 @@ export default function AssetMonthPeaks({
           <div className="text-xs text-neutral-500">
             *Los picos se detectan con una ventana ±4h y se desduplican a ≥6h.
             Úsalo como guía horaria; no es garantía de repetición.
+          </div>
+
+          {/* Frase resumen */}
+          <div className="mt-2 text-sm font-medium text-neutral-300">
+            📌 {summary}
           </div>
         </>
       )}
