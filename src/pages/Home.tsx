@@ -1183,6 +1183,10 @@ export default function Home() {
               loading={ethLoading}
               error={ethError}
             />
+            <AssetMonthPeaks
+              asset={form.asset}
+              orderType={primaryOrder?.side || "SELL"}
+            />
           </div>
           <div className="h-full">
             <AssetRanges
@@ -1204,13 +1208,6 @@ export default function Home() {
               refreshKey={ethRefreshKey} // ya lo usás para refrescar cada 10 min
             />
           </div>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 items-start">
-          <AssetMonthPeaks
-            asset={form.asset}
-            orderType={primaryOrder?.side || "SELL"}
-          />
-          {/* si querés otro panel a la derecha, ponelo aquí */}
         </div>
       </div>{" "}
     </div>
