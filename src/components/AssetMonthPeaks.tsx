@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type OrderType = "BUY" | "SELL";
+type PeriodKey = "24h" | "7d" | "1m";
 
 type Candle = {
   t: number; // open time (ms)
@@ -28,7 +29,12 @@ function toSymbol(asset: string) {
   return `${asset.toUpperCase()}USDT`;
 }
 
-async function fetchMonth1h(symbol: string, limit = 720): Promise<Candle[]> {
+async function fetchCandles(
+  symbol: string,
+  period: PeriodKey
+): Promise<Candle[]> {
+  // Config por período (todo 1h para consistencia)
+  const limit = period === "24h" ? 24 : period === "7d" ? 168 : /* 1m */ 720;
   const url = `/.netlify/functions/binance-proxy?symbol=${symbol}&interval=1h&limit=${limit}`;
   const r = await fetch(url, { headers: { "cache-control": "no-cache" } });
   if (!r.ok) throw new Error(`proxy ${r.status}`);
@@ -67,7 +73,7 @@ function detectLocalExtrema(
   return idxs;
 }
 
-function dedupeByTime(peaks: Peak[], candles: Candle[], minHours = 6) {
+function dedupeByTime(peaks: Peak[], candles: Candle[], minHours: number) {
   const keep: Peak[] = [];
   const minMs = minHours * 3600 * 1000;
   for (const p of peaks) {
@@ -120,6 +126,7 @@ function Sparkline({ candles, peaks }: { candles: Candle[]; peaks: Peak[] }) {
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[140px]">
       <rect x="0" y="0" width={w} height={h} className="fill-neutral-900/50" />
       <path d={d} className="stroke-white/80 fill-none" strokeWidth={1.5} />
+      {/* guía min / max */}
       <line
         x1={pad}
         x2={w - pad}
@@ -150,12 +157,40 @@ function Sparkline({ candles, peaks }: { candles: Candle[]; peaks: Peak[] }) {
   );
 }
 
-export default function AssetMonthPeaks({
+/** Traduce posición relativa (0..1) a etiqueta simple para BUY/SELL */
+function zoneLabel(pos: number, orderType: OrderType) {
+  // pos ~ 0 = cerca del mínimo, pos ~ 1 = cerca del máximo
+  if (orderType === "SELL") {
+    if (pos >= 0.7) return "zona alta (bueno para vender)";
+    if (pos <= 0.3) return "zona baja (menos favorable para vender)";
+    return "zona intermedia";
+  } else {
+    if (pos <= 0.3) return "zona baja (bueno para comprar)";
+    if (pos >= 0.7) return "zona alta (más riesgoso comprar)";
+    return "zona intermedia";
+  }
+}
+
+function posScore(pos: number, orderType: OrderType) {
+  // SELL desea pos alto → +1; BUY desea pos bajo → +1
+  if (orderType === "SELL") return pos * 2 - 1; // 0..1 → -1..+1
+  return (1 - pos) * 2 - 1; // BUY: pos bajo → +1
+}
+
+function periodTitle(p: PeriodKey) {
+  return p === "24h" ? "24 h" : p === "7d" ? "7 días" : "1 mes";
+}
+
+export function AssetPeaksPeriod({
   asset = "ETH",
   orderType = "SELL",
+  period = "1m",
+  onSummary, // opcional: para recolectar score/pos por período
 }: {
   asset?: string;
   orderType?: OrderType;
+  period?: PeriodKey;
+  onSummary?: (p: PeriodKey, score: number) => void;
 }) {
   const symbol = useMemo(() => toSymbol(asset || "ETH"), [asset]);
   const [candles, setCandles] = useState<Candle[] | null>(null);
@@ -164,16 +199,20 @@ export default function AssetMonthPeaks({
   const [err, setErr] = useState<string | null>(null);
   const [lastAt, setLastAt] = useState<number | null>(null);
 
+  // Parámetros del detector por período
+  const windowSize = period === "24h" ? 2 : period === "7d" ? 3 : 4;
+  const minHours = period === "24h" ? 3 : 6;
+
   async function run() {
     try {
       setLoading(true);
       setErr(null);
-      const data = await fetchMonth1h(symbol, 720);
+      const data = await fetchCandles(symbol, period);
       setCandles(data);
 
       const closes = data.map((c) => c.close);
       const type = orderType === "BUY" ? "max" : "min";
-      const idxs = detectLocalExtrema(closes, 4, type);
+      const idxs = detectLocalExtrema(closes, windowSize, type);
 
       let ext: Peak[] = idxs.map((i) => ({
         t: data[i].t,
@@ -185,10 +224,18 @@ export default function AssetMonthPeaks({
         orderType === "BUY" ? b.price - a.price : a.price - b.price
       );
 
-      ext = dedupeByTime(ext, data, 6).slice(0, 10);
+      ext = dedupeByTime(ext, data, minHours).slice(0, 10);
 
       setPeaks(ext);
       setLastAt(Date.now());
+
+      // Resumen → pos y score
+      const min = Math.min(...closes);
+      const max = Math.max(...closes);
+      const span = max - min || 1;
+      const last = closes.at(-1) || 0;
+      const pos = (last - min) / span;
+      onSummary?.(period, posScore(pos, orderType));
     } catch (e: any) {
       setErr(e?.message || "Error de red/APIs");
     } finally {
@@ -199,38 +246,24 @@ export default function AssetMonthPeaks({
   useEffect(() => {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, orderType]);
+  }, [symbol, orderType, period]);
 
-  // Frase resumen automática
   const summary = useMemo(() => {
     if (!candles?.length) return "";
     const closes = candles.map((c) => c.close);
-    const last = closes.at(-1) || 0;
     const min = Math.min(...closes);
     const max = Math.max(...closes);
     const span = max - min || 1;
-    const pos = (last - min) / span;
-
-    if (orderType === "SELL") {
-      if (pos <= 0.3)
-        return "El precio está más cerca de los mínimos: vender ahora es menos favorable.";
-      if (pos >= 0.7)
-        return "El precio está en zona alta: puede ser buen momento para vender.";
-      return "El precio está en zona intermedia: sin señal clara de venta.";
-    } else {
-      if (pos <= 0.3)
-        return "El precio está bajo: puede ser buen momento para comprar.";
-      if (pos >= 0.7)
-        return "El precio está caro: comprar ahora es más riesgoso.";
-      return "El precio está en zona intermedia: sin señal clara de compra.";
-    }
+    const last = closes.at(-1) || 0;
+    const pos = (last - min) / span; // 0 piso, 1 techo
+    return `Ahora está en ${zoneLabel(pos, orderType)}.`;
   }, [candles, orderType]);
 
   return (
     <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-lg font-semibold">
-          {asset.toUpperCase()} — Último mes (1h)
+          {asset.toUpperCase()} — {periodTitle(period)}
         </div>
         <div className="hidden md:flex items-center gap-2 text-xs text-neutral-400">
           {lastAt && (
@@ -281,7 +314,7 @@ export default function AssetMonthPeaks({
                 {peaks.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-3 py-3 text-neutral-400">
-                      No se detectaron picos claros el último mes.
+                      No se detectaron picos claros en este período.
                     </td>
                   </tr>
                 ) : (
@@ -305,16 +338,91 @@ export default function AssetMonthPeaks({
           </div>
 
           <div className="text-xs text-neutral-500">
-            *Los picos se detectan con una ventana ±4h y se desduplican a ≥6h.
-            Úsalo como guía horaria; no es garantía de repetición.
+            *Los picos se detectan con ventana ±{windowSize}h y se desduplican a
+            ≥{minHours}h.
           </div>
 
           {/* Frase resumen */}
-          <div className="mt-2 text-sm font-medium text-neutral-300">
+          <div className="mt-1 text-sm font-medium text-neutral-300">
             📌 {summary}
           </div>
         </>
       )}
     </section>
+  );
+}
+
+/** Wrapper que muestra 24h, 7d y 1m y emite veredicto global */
+export default function AssetPeaksSuite({
+  asset = "ETH",
+  orderType = "SELL",
+}: {
+  asset?: string;
+  orderType?: OrderType;
+}) {
+  const [scores, setScores] = useState<Record<PeriodKey, number>>({
+    "24h": 0,
+    "7d": 0,
+    "1m": 0,
+  });
+
+  const onSummary = (p: PeriodKey, score: number) =>
+    setScores((s) => ({ ...s, [p]: score }));
+
+  const globalVerdict = useMemo(() => {
+    // ponderación: intradía manda más
+    const w24 = 0.5,
+      w7 = 0.3,
+      w1m = 0.2;
+    const agg = scores["24h"] * w24 + scores["7d"] * w7 + scores["1m"] * w1m;
+    // agg en [-1..+1]
+    if (orderType === "SELL") {
+      if (agg > 0.25)
+        return "En conjunto, el precio tiende a zona alta: es favorable para vender.";
+      if (agg < -0.25)
+        return "En conjunto, el precio tiende a zona baja: menos favorable para vender.";
+      return "Las señales en conjunto no muestran una venta clara (zona intermedia).";
+    } else {
+      if (agg > 0.25)
+        return "En conjunto, el precio no está barato: comprar ahora es más riesgoso.";
+      if (agg < -0.25)
+        return "En conjunto, el precio tiende a zona baja: puede ser favorable para comprar.";
+      return "Las señales en conjunto no muestran una compra clara (zona intermedia).";
+    }
+  }, [scores, orderType]);
+
+  return (
+    <div className="grid gap-6">
+      <AssetPeaksPeriod
+        asset={asset}
+        orderType={orderType}
+        period="24h"
+        onSummary={onSummary}
+      />
+      <AssetPeaksPeriod
+        asset={asset}
+        orderType={orderType}
+        period="7d"
+        onSummary={onSummary}
+      />
+      <AssetPeaksPeriod
+        asset={asset}
+        orderType={orderType}
+        period="1m"
+        onSummary={onSummary}
+      />
+
+      {/* Veredicto global */}
+      <section className="p-4 -mt-2 rounded-xl border border-neutral-800 bg-neutral-900/60">
+        <div className="text-lg font-semibold mb-1">
+          {asset.toUpperCase()} — Veredicto global (24h · 7d · 1m)
+        </div>
+        <div className="text-sm text-neutral-300">📌 {globalVerdict}</div>
+        <div className="text-[11px] text-neutral-500 mt-1">
+          *Ponderación: 24h (50%), 7d (30%), 1m (20%). Guía educativa, no es
+          recomendación financiera.
+        </div>
+      </section>
+    </div>
   );
 }
