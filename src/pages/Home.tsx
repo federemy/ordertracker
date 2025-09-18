@@ -7,6 +7,7 @@ import EthVerdict from "../components/EthVerdict";
 import AssetRanges from "../components/AssetRanges";
 import AssetMonthPeaks from "../components/AssetMonthPeaks";
 import AssetCycles from "../components/AssetCycles";
+import CycleScanner from "../components/CycleScanner";
 
 /* ===== Types ===== */
 type Order = {
@@ -1190,13 +1191,19 @@ export default function Home() {
               refreshKey={ethRefreshKey} // tu clave de refresh cada 10 min
               orderType={primaryOrder?.side ?? form.side}
             />
+            <CycleScanner
+              asset={form.asset}
+              defaultTargetUsd={800}
+              defaultHours={6}
+              lookbackDays={30}
+            />
+            <AssetCycles
+              asset={form.asset}
+              thresholdUsd={800} // umbral por defecto
+              defaultPeriod="30d" // 24h | 7d | 30d
+              refreshKey={ethRefreshKey} // ya lo usás para refrescar cada 10 min
+            />
           </div>
-          <AssetCycles
-            asset={form.asset}
-            thresholdUsd={800} // umbral por defecto
-            defaultPeriod="30d" // 24h | 7d | 30d
-            refreshKey={ethRefreshKey} // ya lo usás para refrescar cada 10 min
-          />
         </div>
         <div className="grid gap-6 md:grid-cols-2 items-start">
           <AssetMonthPeaks
