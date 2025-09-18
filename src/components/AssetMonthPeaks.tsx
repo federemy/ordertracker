@@ -520,10 +520,6 @@ export default function AssetPeaksSuite({
             ⏰ Además, {globalHours}.
           </div>
         )}
-        <div className="text-[11px] text-neutral-500 mt-1">
-          *Ponderación: 24h (50%), 7d (30%), 1m (20%). Guía educativa. Los
-          horarios son heurísticos a partir de los picos detectados.
-        </div>
       </section>
     </div>
   );
