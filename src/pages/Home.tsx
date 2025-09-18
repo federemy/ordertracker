@@ -5,6 +5,7 @@ import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
 import AssetRanges from "../components/AssetRanges";
+import AssetMonthPeaks from "../components/AssetMonthPeaks";
 
 /* ===== Types ===== */
 type Order = {
@@ -1189,6 +1190,13 @@ export default function Home() {
               orderType={primaryOrder?.side ?? form.side}
             />
           </div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 items-start">
+          <AssetMonthPeaks
+            asset={form.asset}
+            orderType={primaryOrder?.side || "SELL"}
+          />
+          {/* si querés otro panel a la derecha, ponelo aquí */}
         </div>
       </div>{" "}
     </div>
