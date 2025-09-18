@@ -85,7 +85,7 @@ function dedupeByTime(peaks: Peak[], candles: Candle[], minHours: number) {
   return keep;
 }
 
-function hourUTCminus3(ms: number) {
+function utcMinus3Hour(ms: number) {
   const utcHour = new Date(ms).getUTCHours();
   return (utcHour - 3 + 24) % 24;
 }
@@ -95,9 +95,36 @@ function ddmmyy_hhmm_utc3(ms: number) {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(hourUTCminus3(ms)).padStart(2, "0");
+  const hh = String(utcMinus3Hour(ms)).padStart(2, "0");
   const min = String(d.getUTCMinutes()).padStart(2, "0");
   return `${dd}/${mm}/${String(yyyy).slice(-2)} ${hh}:${min}`;
+}
+
+function hoursHistogramUTC3(peaks: Peak[], candles: Candle[]) {
+  // cuenta ocurrencias por hora (0..23) en UTC-3
+  const map = new Map<number, number>();
+  for (const p of peaks) {
+    const h = utcMinus3Hour(candles[p.idx].t);
+    map.set(h, (map.get(h) || 0) + 1);
+  }
+  // ordena desc por frecuencia
+  return Array.from(map.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([h, c]) => ({ hour: h, count: c }));
+}
+
+function topHoursLabel(hist: { hour: number; count: number }[], k = 3) {
+  if (!hist.length) return "";
+  const top = hist.slice(0, k).map((x) => x.hour);
+  if (top.length === 1)
+    return `alrededor de las ${String(top[0]).padStart(2, "0")}:00 (UTC-3)`;
+  if (top.length === 2)
+    return `alrededor de las ${String(top[0]).padStart(2, "0")}:00 y ${String(
+      top[1]
+    ).padStart(2, "0")}:00 (UTC-3)`;
+  return `entre ${String(top[0]).padStart(2, "0")}:00, ${String(
+    top[1]
+  ).padStart(2, "0")}:00 y ${String(top[2]).padStart(2, "0")}:00 (UTC-3)`;
 }
 
 function Sparkline({ candles, peaks }: { candles: Candle[]; peaks: Peak[] }) {
@@ -185,12 +212,14 @@ export function AssetPeaksPeriod({
   asset = "ETH",
   orderType = "SELL",
   period = "1m",
-  onSummary, // opcional: para recolectar score/pos por período
+  onSummary, // recibe: (period, score)
+  onHours, // recibe: (period, topHours[])
 }: {
   asset?: string;
   orderType?: OrderType;
   period?: PeriodKey;
   onSummary?: (p: PeriodKey, score: number) => void;
+  onHours?: (p: PeriodKey, hours: number[]) => void;
 }) {
   const symbol = useMemo(() => toSymbol(asset || "ETH"), [asset]);
   const [candles, setCandles] = useState<Candle[] | null>(null);
@@ -198,6 +227,7 @@ export function AssetPeaksPeriod({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [lastAt, setLastAt] = useState<number | null>(null);
+  const [topHours, setTopHours] = useState<number[]>([]);
 
   // Parámetros del detector por período
   const windowSize = period === "24h" ? 2 : period === "7d" ? 3 : 4;
@@ -220,10 +250,10 @@ export function AssetPeaksPeriod({
         idx: i,
       }));
 
+      // Ordenamos por precio (SELL→mínimos, BUY→máximos) y desduplicamos temporalmente
       ext.sort((a, b) =>
         orderType === "BUY" ? b.price - a.price : a.price - b.price
       );
-
       ext = dedupeByTime(ext, data, minHours).slice(0, 10);
 
       setPeaks(ext);
@@ -236,6 +266,12 @@ export function AssetPeaksPeriod({
       const last = closes.at(-1) || 0;
       const pos = (last - min) / span;
       onSummary?.(period, posScore(pos, orderType));
+
+      // Horas más frecuentes (UTC-3) de los picos
+      const hist = hoursHistogramUTC3(ext, data);
+      const top = hist.slice(0, 3).map((h) => h.hour);
+      setTopHours(top);
+      onHours?.(period, top);
     } catch (e: any) {
       setErr(e?.message || "Error de red/APIs");
     } finally {
@@ -256,8 +292,16 @@ export function AssetPeaksPeriod({
     const span = max - min || 1;
     const last = closes.at(-1) || 0;
     const pos = (last - min) / span; // 0 piso, 1 techo
-    return `Ahora está en ${zoneLabel(pos, orderType)}.`;
-  }, [candles, orderType]);
+
+    const horas =
+      topHours.length > 0
+        ? `; picos probables ${topHoursLabel(
+            topHours.map((h) => ({ hour: h, count: 1 }))
+          )}`
+        : "";
+
+    return `Ahora está en ${zoneLabel(pos, orderType)}${horas}.`;
+  }, [candles, orderType, topHours]);
 
   return (
     <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-3">
@@ -352,7 +396,7 @@ export function AssetPeaksPeriod({
   );
 }
 
-/** Wrapper que muestra 24h, 7d y 1m y emite veredicto global */
+/** Wrapper que muestra 24h, 7d y 1m y emite veredicto global + horas probables */
 export default function AssetPeaksSuite({
   asset = "ETH",
   orderType = "SELL",
@@ -366,8 +410,19 @@ export default function AssetPeaksSuite({
     "1m": 0,
   });
 
+  const [hoursByPeriod, setHoursByPeriod] = useState<
+    Record<PeriodKey, number[]>
+  >({
+    "24h": [],
+    "7d": [],
+    "1m": [],
+  });
+
   const onSummary = (p: PeriodKey, score: number) =>
     setScores((s) => ({ ...s, [p]: score }));
+
+  const onHours = (p: PeriodKey, hours: number[]) =>
+    setHoursByPeriod((h) => ({ ...h, [p]: hours }));
 
   const globalVerdict = useMemo(() => {
     // ponderación: intradía manda más
@@ -375,7 +430,6 @@ export default function AssetPeaksSuite({
       w7 = 0.3,
       w1m = 0.2;
     const agg = scores["24h"] * w24 + scores["7d"] * w7 + scores["1m"] * w1m;
-    // agg en [-1..+1]
     if (orderType === "SELL") {
       if (agg > 0.25)
         return "En conjunto, el precio tiende a zona alta: es favorable para vender.";
@@ -391,6 +445,46 @@ export default function AssetPeaksSuite({
     }
   }, [scores, orderType]);
 
+  const globalHours = useMemo(() => {
+    // combinamos horas más probables ponderando por período
+    const weight: Record<PeriodKey, number> = {
+      "24h": 0.5,
+      "7d": 0.3,
+      "1m": 0.2,
+    };
+    const count = new Map<number, number>(); // hour -> score
+    (Object.keys(hoursByPeriod) as PeriodKey[]).forEach((k) => {
+      const hrs = hoursByPeriod[k];
+      const w = weight[k];
+      hrs.forEach((h, rankIdx) => {
+        // top1 vale más que top2/top3 (3,2,1) * weight
+        const rankScore = (3 - rankIdx) * w;
+        count.set(h, (count.get(h) || 0) + rankScore);
+      });
+    });
+    const sorted = Array.from(count.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([h]) => h)
+      .slice(0, 3);
+    if (sorted.length === 0) return "";
+    if (sorted.length === 1)
+      return `picos probables alrededor de las ${String(sorted[0]).padStart(
+        2,
+        "0"
+      )}:00 (UTC-3)`;
+    if (sorted.length === 2)
+      return `picos probables alrededor de las ${String(sorted[0]).padStart(
+        2,
+        "0"
+      )}:00 y ${String(sorted[1]).padStart(2, "0")}:00 (UTC-3)`;
+    return `picos probables entre ${String(sorted[0]).padStart(
+      2,
+      "0"
+    )}:00, ${String(sorted[1]).padStart(2, "0")}:00 y ${String(
+      sorted[2]
+    ).padStart(2, "0")}:00 (UTC-3)`;
+  }, [hoursByPeriod]);
+
   return (
     <div className="grid gap-6">
       <AssetPeaksPeriod
@@ -398,18 +492,21 @@ export default function AssetPeaksSuite({
         orderType={orderType}
         period="24h"
         onSummary={onSummary}
+        onHours={onHours}
       />
       <AssetPeaksPeriod
         asset={asset}
         orderType={orderType}
         period="7d"
         onSummary={onSummary}
+        onHours={onHours}
       />
       <AssetPeaksPeriod
         asset={asset}
         orderType={orderType}
         period="1m"
         onSummary={onSummary}
+        onHours={onHours}
       />
 
       {/* Veredicto global */}
@@ -418,9 +515,14 @@ export default function AssetPeaksSuite({
           {asset.toUpperCase()} — Veredicto global (24h · 7d · 1m)
         </div>
         <div className="text-sm text-neutral-300">📌 {globalVerdict}</div>
+        {!!globalHours && (
+          <div className="text-sm text-neutral-300 mt-1">
+            ⏰ Además, {globalHours}.
+          </div>
+        )}
         <div className="text-[11px] text-neutral-500 mt-1">
-          *Ponderación: 24h (50%), 7d (30%), 1m (20%). Guía educativa, no es
-          recomendación financiera.
+          *Ponderación: 24h (50%), 7d (30%), 1m (20%). Guía educativa. Los
+          horarios son heurísticos a partir de los picos detectados.
         </div>
       </section>
     </div>
