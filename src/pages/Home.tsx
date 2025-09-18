@@ -6,6 +6,7 @@ import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
 import AssetRanges from "../components/AssetRanges";
 import AssetMonthPeaks from "../components/AssetMonthPeaks";
+import AssetCycles from "../components/AssetCycles";
 
 /* ===== Types ===== */
 type Order = {
@@ -1190,6 +1191,12 @@ export default function Home() {
               orderType={primaryOrder?.side ?? form.side}
             />
           </div>
+          <AssetCycles
+            asset={form.asset}
+            thresholdUsd={800} // umbral por defecto
+            defaultPeriod="30d" // 24h | 7d | 30d
+            refreshKey={ethRefreshKey} // ya lo usás para refrescar cada 10 min
+          />
         </div>
         <div className="grid gap-6 md:grid-cols-2 items-start">
           <AssetMonthPeaks
