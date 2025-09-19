@@ -1186,7 +1186,7 @@ export default function Home() {
             <NewsSentimentSummary
               asset={form.asset}
               orderSide={primaryOrder?.side}
-              refreshKey={ethRefreshKey} // si ya tenés esta clave que refresca cada 10 min
+              refreshKey={ethRefreshKey} // tu gatillo de 10 min
             />
           </div>
           <div className="h-full">

@@ -1,38 +1,25 @@
+// src/components/NewsSentimentSummary.tsx
 import { useEffect, useMemo, useState } from "react";
 
 type Verdict = "Alcista" | "Bajista" | "Mixto/Neutro";
 
+type SummaryBlock = {
+  verdict: Verdict;
+  confidence: number; // 0-100
+  reasons: string[];
+  summary: string;
+};
+
 type ApiResponse = {
   updatedAt: number;
-  shortTerm: { verdict: Verdict; confidence: number; reasons: string[] };
-  mediumTerm: { verdict: Verdict; confidence: number; reasons: string[] };
+  shortTerm: SummaryBlock;
+  mediumTerm: SummaryBlock;
   sampleHeadlines: { title: string; source: string }[];
 };
 
-function sentenceFor(
-  label: string,
-  v: Verdict,
-  conf: number,
-  bias: "BUY" | "SELL" | undefined
-) {
-  const confLbl = conf >= 70 ? "alta" : conf >= 45 ? "media" : "baja";
-  const dir =
-    v === "Alcista" ? "alcista" : v === "Bajista" ? "bajista" : "neutra/mixta";
-
-  // Ajuste sutil según sesgo operativo actual (opcional)
-  const hint =
-    bias === "BUY" && v === "Bajista"
-      ? " • Precaución si pensás comprar."
-      : bias === "SELL" && v === "Alcista"
-      ? " • Precaución si pensás vender."
-      : "";
-
-  return `${label}: lectura ${dir} (confianza ${conf}%, ${confLbl}).${hint}`;
-}
-
 export default function NewsSentimentSummary({
   asset = "ETH",
-  orderSide, // "BUY" | "SELL" (opcional, para matiz de frase)
+  orderSide: _orderSide, // lo usamos para ajustar el copy
   refreshKey,
 }: {
   asset?: string;
@@ -43,82 +30,145 @@ export default function NewsSentimentSummary({
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const title = useMemo(
-    () => `${asset.toUpperCase()} — Sentimiento por noticias (corto / mediano)`,
-    [asset]
-  );
+  // Pequeño prefijo de copy según BUY/SELL (lo usa el texto, evita var sin usar)
+  const tilt = useMemo(() => {
+    if (_orderSide === "BUY") return "Para compras: ";
+    if (_orderSide === "SELL") return "Para ventas: ";
+    return "";
+  }, [_orderSide]);
 
   useEffect(() => {
-    let cancel = false;
+    let cancelled = false;
     (async () => {
       try {
         setLoading(true);
         setErr(null);
-        const r = await fetch("/.netlify/functions/news-aggregator");
-        if (!r.ok) throw new Error(`news-aggregator ${r.status}`);
-        const j: ApiResponse = await r.json();
-        if (!cancel) setData(j);
+        const r = await fetch("/.netlify/functions/news-aggregator", {
+          headers: { "cache-control": "no-cache" },
+        });
+        if (!r.ok) throw new Error(`news ${r.status}`);
+        const j = (await r.json()) as ApiResponse;
+        if (!cancelled) setData(j);
       } catch (e: any) {
-        if (!cancel) setErr(e?.message || "Error obteniendo noticias.");
+        if (!cancelled) setErr(e?.message || "Error de red/APIs");
       } finally {
-        if (!cancel) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
-      cancel = true;
+      cancelled = true;
     };
   }, [refreshKey]);
 
+  const fmtTime = (ms?: number) =>
+    ms ? new Date(ms).toLocaleTimeString() : "—";
+
+  if (err) {
+    return (
+      <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40">
+        <div className="text-lg font-semibold">
+          Mercado — Sentimiento por noticias
+        </div>
+        <div className="mt-2 text-sm text-rose-400">Error: {String(err)}</div>
+      </section>
+    );
+  }
+
   return (
-    <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/60 grid gap-2">
-      <div className="text-lg font-semibold">{title}</div>
-      {loading && (
-        <div className="text-sm text-neutral-400">Leyendo titulares…</div>
-      )}
-      {err && <div className="text-sm text-rose-400">Error: {err}</div>}
+    <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 grid gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-lg font-semibold">
+          Mercado — Sentimiento por noticias
+        </div>
+        {loading ? (
+          <div className="hidden md:block text-xs text-neutral-400">
+            Actualizando…
+          </div>
+        ) : (
+          data && (
+            <div className="text-xs text-neutral-400">
+              Actualizado: {fmtTime(data.updatedAt)}
+            </div>
+          )
+        )}
+      </div>
 
-      {data && (
+      {!data ? (
+        <div className="text-sm text-neutral-400">Cargando…</div>
+      ) : (
         <>
-          <p className="text-sm text-neutral-200">
-            {sentenceFor(
-              "Corto plazo (1–3 días)",
-              data.shortTerm.verdict,
-              data.shortTerm.confidence,
-              orderSide
+          {/* Bloque corto plazo */}
+          <div className="grid gap-1 p-3 rounded-xl border border-neutral-800 bg-neutral-900/50">
+            <div className="text-sm font-medium">
+              Corto plazo (24–72h): {data.shortTerm.verdict} ·{" "}
+              <span className="text-neutral-300">
+                {data.shortTerm.confidence}% confianza
+              </span>
+            </div>
+            <p className="text-sm text-neutral-200">
+              {tilt}
+              {data.shortTerm.summary}
+            </p>
+            {!!data.shortTerm.reasons?.length && (
+              <ul className="text-xs text-neutral-400 list-disc pl-5 space-y-0.5">
+                {data.shortTerm.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
             )}
-          </p>
-          <p className="text-sm text-neutral-200">
-            {sentenceFor(
-              "Mediano plazo (1–2 semanas)",
-              data.mediumTerm.verdict,
-              data.mediumTerm.confidence,
-              orderSide
+          </div>
+
+          {/* Bloque mediano plazo */}
+          <div className="grid gap-1 p-3 rounded-xl border border-neutral-800 bg-neutral-900/50">
+            <div className="text-sm font-medium">
+              Mediano plazo (1–2 semanas): {data.mediumTerm.verdict} ·{" "}
+              <span className="text-neutral-300">
+                {data.mediumTerm.confidence}% confianza
+              </span>
+            </div>
+            <p className="text-sm text-neutral-200">
+              {tilt}
+              {data.mediumTerm.summary}
+            </p>
+            {!!data.mediumTerm.reasons?.length && (
+              <ul className="text-xs text-neutral-400 list-disc pl-5 space-y-0.5">
+                {data.mediumTerm.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
             )}
-          </p>
+          </div>
 
-          {/* Razones compactas (opcionales) */}
-          {(data.shortTerm.reasons.length > 0 ||
-            data.mediumTerm.reasons.length > 0) && (
-            <ul className="mt-1 text-xs text-neutral-400 list-disc pl-4 space-y-1">
-              {data.shortTerm.reasons.slice(0, 2).map((r, i) => (
-                <li key={`s-${i}`}>{r}</li>
-              ))}
-              {data.mediumTerm.reasons.slice(0, 2).map((r, i) => (
-                <li key={`m-${i}`}>{r}</li>
-              ))}
-            </ul>
-          )}
-
-          {/* Muestra 2 titulares representativos (sin links para evitar tracking) */}
-          {data.sampleHeadlines?.length > 0 && (
-            <div className="text-xs text-neutral-500">
-              Ejemplos recientes: “{data.sampleHeadlines[0]?.title}” (
-              {data.sampleHeadlines[0]?.source})
-              {data.sampleHeadlines[1]
-                ? ` · “${data.sampleHeadlines[1]?.title}” (${data.sampleHeadlines[1]?.source})`
-                : ""}
+          {/* Muestra 2–3 titulares (opcional) */}
+          {!!data.sampleHeadlines?.length && (
+            <div className="grid gap-1">
+              <div className="text-xs text-neutral-400">
+                Titulares muestreados
+              </div>
+              <ul className="text-sm text-neutral-200 space-y-1">
+                {data.sampleHeadlines.slice(0, 3).map((h, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-neutral-500" />
+                    <span className="font-medium">{h.title}</span>
+                    <span className="text-neutral-400 text-xs">
+                      · {h.source}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
+
+          {/* Frase final (resumen) */}
+          <div className="mt-1 text-sm text-neutral-300">
+            Lectura rápida: en <b>24–72h</b> el tono es{" "}
+            <b>{data.shortTerm.verdict.toLowerCase()}</b> (
+            {data.shortTerm.confidence}
+            %), y a <b>1–2 semanas</b> se mantiene{" "}
+            <b>{data.mediumTerm.verdict.toLowerCase()}</b> (
+            {data.mediumTerm.confidence}
+            %). Esto aplica como contexto general para {asset.toUpperCase()}.
+          </div>
         </>
       )}
     </section>
