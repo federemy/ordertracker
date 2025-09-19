@@ -6,9 +6,8 @@ import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
 import AssetRanges from "../components/AssetRanges";
 
-import MarketPulse from "../components/MarketPulse";
-
 import MarketHoursSummary from "../components/MarketHoursSummary";
+import NewsSentimentSummary from "../components/NewsSentimentSummary";
 
 /* ===== Types ===== */
 type Order = {
@@ -1184,10 +1183,10 @@ export default function Home() {
               loading={ethLoading}
               error={ethError}
             />
-            <MarketPulse
-              key={ethRefreshKey}
+            <NewsSentimentSummary
               asset={form.asset}
-              symbol={`${form.asset}USDT`}
+              orderSide={primaryOrder?.side}
+              refreshKey={ethRefreshKey} // si ya tenés esta clave que refresca cada 10 min
             />
           </div>
           <div className="h-full">
