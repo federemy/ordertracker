@@ -5,9 +5,10 @@ import EthIntraday from "../components/EthIntraday";
 import type { EthAnalysis } from "../components/EthIntraday";
 import EthVerdict from "../components/EthVerdict";
 import AssetRanges from "../components/AssetRanges";
-import AssetMonthPeaks from "../components/AssetMonthPeaks";
-import AssetCycles from "../components/AssetCycles";
-import CycleScanner from "../components/CycleScanner";
+
+import MarketPulse from "../components/MarketPulse";
+
+import MarketHoursSummary from "../components/MarketHoursSummary";
 
 /* ===== Types ===== */
 type Order = {
@@ -1183,9 +1184,10 @@ export default function Home() {
               loading={ethLoading}
               error={ethError}
             />
-            <AssetMonthPeaks
+            <MarketPulse
+              key={ethRefreshKey}
               asset={form.asset}
-              orderType={primaryOrder?.side || "SELL"}
+              symbol={`${form.asset}USDT`}
             />
           </div>
           <div className="h-full">
@@ -1195,17 +1197,11 @@ export default function Home() {
               refreshKey={ethRefreshKey} // tu clave de refresh cada 10 min
               orderType={primaryOrder?.side ?? form.side}
             />
-            <CycleScanner
+            <MarketHoursSummary
               asset={form.asset}
-              defaultTargetUsd={800}
-              defaultHours={6}
-              lookbackDays={30}
-            />
-            <AssetCycles
-              asset={form.asset}
-              thresholdUsd={800} // umbral por defecto
-              defaultPeriod="30d" // 24h | 7d | 30d
-              refreshKey={ethRefreshKey} // ya lo usás para refrescar cada 10 min
+              symbol={`${form.asset.toUpperCase()}USDT`}
+              orderSide={primaryOrder?.side} // 👉 prioriza subas (BUY) o bajas (SELL)
+              refreshKey={ethRefreshKey} // 👉 se recalcula cada 10 min si ya usás esta key
             />
           </div>
         </div>
