@@ -9,6 +9,10 @@ import AssetRanges from "../components/AssetRanges";
 import MarketHoursSummary from "../components/MarketHoursSummary";
 import NewsSentimentSummary from "../components/NewsSentimentSummary";
 
+import RebuySimulator from "../components/RebuySimulator";
+import MarketBiasAnalyzer from "../components/MarketBiasAnalyzer";
+import DropLadderSimulator from "../components/DropLadderSimulator";
+
 /* ===== Types ===== */
 type Order = {
   id: string;
@@ -1196,6 +1200,28 @@ export default function Home() {
               refreshKey={ethRefreshKey} // tu clave de refresh cada 10 min
               orderType={primaryOrder?.side ?? form.side}
             />
+            <DropLadderSimulator
+              asset={form.asset}
+              currentPrice={prices[form.asset] || 0}
+              defaultQty={6}
+              step={100}
+              rows={12}
+            />
+            <RebuySimulator
+              asset={form.asset}
+              currentPrice={prices[form.asset] || 0}
+              defaultQty={6}
+              step={100}
+              rows={12}
+            />
+
+            <MarketBiasAnalyzer
+              asset={form.asset} // "ETH", "BTC", etc.
+              interval="1h"
+              limit={300}
+              refreshMs={60000}
+            />
+
             <MarketHoursSummary
               asset={form.asset}
               symbol={`${form.asset.toUpperCase()}USDT`}
