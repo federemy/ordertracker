@@ -1197,13 +1197,6 @@ export default function Home() {
               limit={300}
               refreshMs={60000}
             />
-
-            <MarketHoursSummary
-              asset={form.asset}
-              symbol={`${form.asset.toUpperCase()}USDT`}
-              orderSide={primaryOrder?.side} // 👉 prioriza subas (BUY) o bajas (SELL)
-              refreshKey={ethRefreshKey} // 👉 se recalcula cada 10 min si ya usás esta key
-            />
           </div>
           <div className="h-full">
             <AssetRanges
@@ -1218,6 +1211,12 @@ export default function Home() {
               defaultQty={6}
               step={100}
               rows={6}
+            />
+            <MarketHoursSummary
+              asset={form.asset}
+              symbol={`${form.asset.toUpperCase()}USDT`}
+              orderSide={primaryOrder?.side} // 👉 prioriza subas (BUY) o bajas (SELL)
+              refreshKey={ethRefreshKey} // 👉 se recalcula cada 10 min si ya usás esta key
             />
           </div>
         </div>
