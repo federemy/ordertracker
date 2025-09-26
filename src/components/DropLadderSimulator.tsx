@@ -164,9 +164,11 @@ export function DropLadderSimulator({
                     <td
                       className={cn(
                         "px-3 py-2 text-right tabular-nums font-semibold",
-                        row.leftoverA >= 0
+                        row.leftoverA > 0
                           ? "text-emerald-400"
-                          : "text-rose-400"
+                          : row.leftoverA < 0
+                          ? "text-rose-400"
+                          : "text-yellow-300"
                       )}
                     >
                       {money.format(row.leftoverA)}
@@ -174,9 +176,11 @@ export function DropLadderSimulator({
                     <td
                       className={cn(
                         "px-3 py-2 text-right tabular-nums font-semibold",
-                        row.ethExtraB >= 0
+                        row.ethExtraB > 0
                           ? "text-emerald-400"
-                          : "text-rose-400"
+                          : row.ethExtraB < 0
+                          ? "text-rose-400"
+                          : "text-yellow-300"
                       )}
                     >
                       {row.ethExtraB >= 0 ? "+" : ""}

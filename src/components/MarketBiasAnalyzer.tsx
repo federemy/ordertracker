@@ -177,6 +177,22 @@ export function MarketBiasAnalyzerBinance({
     return { bias, signals, lastClose, lastRSI, lastVol, avgVol20 };
   }, [candles]);
 
+  const colorForSignal = (txt: string) => {
+    const s = txt.toLowerCase();
+    if (s.includes("alcista")) return "text-emerald-400";
+    if (s.includes("bajista")) return "text-rose-400";
+    if (
+      s.includes("lateral") ||
+      s.includes("mixta") ||
+      s.includes("neutro") ||
+      s.includes("normal") ||
+      s.includes("indefinida")
+    ) {
+      return "text-yellow-300";
+    }
+    return "text-neutral-300";
+  };
+
   return (
     <section className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/50 grid gap-3">
       <div className="flex items-center justify-between">
@@ -204,7 +220,7 @@ export function MarketBiasAnalyzerBinance({
                   ? "text-emerald-400"
                   : diagnosis.bias === "Bajista"
                   ? "text-rose-400"
-                  : "text-neutral-300"
+                  : "text-yellow-300"
               )}
             >
               {diagnosis.bias}
@@ -216,9 +232,11 @@ export function MarketBiasAnalyzerBinance({
               x
             </span>
           </div>
-          <ul className="space-y-1 text-sm text-neutral-300 list-disc pl-5">
+          <ul className="space-y-1 text-sm list-disc pl-5">
             {diagnosis.signals.map((s, i) => (
-              <li key={i}>{s}</li>
+              <li key={i} className={colorForSignal(s)}>
+                {s}
+              </li>
             ))}
           </ul>
         </>

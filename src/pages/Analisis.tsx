@@ -332,7 +332,7 @@ export default function Analisis() {
                 Combinamos <strong>técnicos de spot</strong> (RSI, MACD,
                 Bollinger, EMA200, MA30, ATR, Vol30d, 52W y dist. ATH) con{" "}
                 <strong>señales de Futuros</strong> (Funding 8h, L/S, OI Δ,
-                Basis) para ponderar momentum y sesgo. 100% educativo.
+                Basis) para ponderar momentum y sesgo.
               </div>
               <ul className="mt-2 mb-0">
                 <li>
