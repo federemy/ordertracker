@@ -9,7 +9,6 @@ import AssetRanges from "../components/AssetRanges";
 import MarketHoursSummary from "../components/MarketHoursSummary";
 import NewsSentimentSummary from "../components/NewsSentimentSummary";
 
-import RebuySimulator from "../components/RebuySimulator";
 import MarketBiasAnalyzer from "../components/MarketBiasAnalyzer";
 import DropLadderSimulator from "../components/DropLadderSimulator";
 
@@ -1192,6 +1191,19 @@ export default function Home() {
               orderSide={primaryOrder?.side}
               refreshKey={ethRefreshKey} // tu gatillo de 10 min
             />
+            <MarketBiasAnalyzer
+              asset={form.asset} // "ETH", "BTC", etc.
+              interval="1h"
+              limit={300}
+              refreshMs={60000}
+            />
+
+            <MarketHoursSummary
+              asset={form.asset}
+              symbol={`${form.asset.toUpperCase()}USDT`}
+              orderSide={primaryOrder?.side} // 👉 prioriza subas (BUY) o bajas (SELL)
+              refreshKey={ethRefreshKey} // 👉 se recalcula cada 10 min si ya usás esta key
+            />
           </div>
           <div className="h-full">
             <AssetRanges
@@ -1206,27 +1218,6 @@ export default function Home() {
               defaultQty={6}
               step={100}
               rows={12}
-            />
-            <RebuySimulator
-              asset={form.asset}
-              currentPrice={prices[form.asset] || 0}
-              defaultQty={6}
-              step={100}
-              rows={12}
-            />
-
-            <MarketBiasAnalyzer
-              asset={form.asset} // "ETH", "BTC", etc.
-              interval="1h"
-              limit={300}
-              refreshMs={60000}
-            />
-
-            <MarketHoursSummary
-              asset={form.asset}
-              symbol={`${form.asset.toUpperCase()}USDT`}
-              orderSide={primaryOrder?.side} // 👉 prioriza subas (BUY) o bajas (SELL)
-              refreshKey={ethRefreshKey} // 👉 se recalcula cada 10 min si ya usás esta key
             />
           </div>
         </div>
