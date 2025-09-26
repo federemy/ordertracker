@@ -1217,7 +1217,7 @@ export default function Home() {
               currentPrice={prices[form.asset] || 0}
               defaultQty={6}
               step={100}
-              rows={12}
+              rows={6}
             />
           </div>
         </div>
